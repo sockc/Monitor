@@ -24,7 +24,7 @@ func collect(name string,prev cpuTimes)(Sample,cpuTimes){
  now:=readCPU();var cpu float64
  if now.total>prev.total&&now.idle>=prev.idle{cpu=percent(now.total-prev.total-(now.idle-prev.idle),now.total-prev.total)}
  host,_:=os.Hostname()
- s:=Sample{Name:name,Hostname:host,OS:"linux",Arch:runtime.GOARCH,CPU:cpu,Timestamp:time.Now().UTC()}
+ s:=Sample{Name:name,Hostname:host,OS:linuxDistribution(),Arch:runtime.GOARCH,CPU:cpu,Timestamp:time.Now().UTC()}
  f,e:=os.Open("/proc/meminfo");if e==nil{
   m:=map[string]uint64{};sc:=bufio.NewScanner(f)
   for sc.Scan(){parts:=strings.Fields(sc.Text());if len(parts)>=2{v,_:=strconv.ParseUint(parts[1],10,64);m[strings.TrimSuffix(parts[0],":")]=v}}
@@ -37,4 +37,21 @@ func collect(name string,prev cpuTimes)(Sample,cpuTimes){
  }
  b,e=os.ReadFile("/proc/uptime");if e==nil{v:=strings.Fields(string(b));if len(v)>0{n,_:=strconv.ParseFloat(v[0],64);s.Uptime=uint64(n)}}
  return s,now
+}
+
+func linuxDistribution()string{
+ b,e:=os.ReadFile("/etc/os-release");if e!=nil{return "Linux"}
+ name,version,pretty:="","",""
+ for _,line:=range strings.Split(string(b),"\n"){
+  if !strings.Contains(line,"="){continue}
+  pair:=strings.SplitN(line,"=",2);value:=strings.Trim(pair[1], " \"'")
+  switch pair[0]{
+  case "NAME":name=value
+  case "VERSION_ID":version=value
+  case "PRETTY_NAME":pretty=value
+  }
+ }
+ if name!=""{if version!=""{return name+" "+version};return name}
+ if pretty!=""{return pretty}
+ return "Linux"
 }
