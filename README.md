@@ -80,3 +80,13 @@ Server credentials: `sudo cat /etc/monitor/server.env`. Treat them as secrets. U
 ## V0.4
 
 Node management provides rename, revoke, delete. Rename changes the identity and immediately revokes its old token; register and reconfigure the Agent using the newly named identity. Deletion removes historical samples and leaves a revoked token tombstone to block legacy shared-token fallback. Server state backup uses SQLite online VACUUM INTO; see scripts/backup.sh. Updates are available through scripts/upgrade.sh and verify published SHA256 checksums. Verify your deployment before enabling automatic scheduled updates.
+
+## V0.5: administrator password login
+
+Existing installations retain `MONITOR_ADMIN_TOKEN` only as a **one-time setup verification secret**. On first visit after upgrade, go to `/setup` to create a username (3–64 ASCII letters/digits/-/_) and a password (12–72 bytes). Enter the original admin token from `/etc/monitor/server.env`. A new installation creates its token in this file. Once configured, `/login` accepts only username and password; token login is disabled.
+
+Passwords use bcrypt. Sessions use random 256-bit secrets; their SHA-256 hashes are stored in SQLite with 7-day expiry, HttpOnly and SameSite Strict cookies. After a password change, all existing sessions are invalidated. Five failed attempts per remote IP lead to a 15-minute temporary lockout (in-memory counter, resets after restart). Use HTTPS to protect passwords and tokens; the server remains bound to localhost by default.
+
+To upgrade an existing VPS, **after the V0.5.0 Release becomes available**, download `scripts/backup.sh` and `scripts/upgrade.sh` to the *same* folder, and invoke `sudo bash upgrade.sh server`. The backup helper requires `python3`. The updater verifies the SHA256 checksum and checks systemd activation and server `/healthz`, restoring the old binary if these fail.
+
+Recovery from a forgotten password is not yet automated. Keep the backup and console access; do not delete the existing admin credential before completing setup.
