@@ -50,6 +50,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sha256sum dist/monitor-linux-* > dist/SHA256SUMS
+          (cd dist && sha256sum monitor-linux-* > SHA256SUMS)
           gh release view v0.2.0 --repo "${{ github.repository }}" >/dev/null 2>&1 && exit 0
           gh release create v0.2.0 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.2.0" --notes "SQLite history, selectable trend chart, per-node tokens, install and systemd integration."
