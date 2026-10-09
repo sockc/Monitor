@@ -20,7 +20,7 @@ func runAgent(server,name,token string,interval time.Duration){
  client:=&http.Client{Timeout:10*time.Second}
  prev:=readCPU()
  send:=func(){
-  sample,next:=collect(name,prev);prev=next
+  sample,next:=collect(name,prev);prev=next;sample.AgentVersion=monitorVersion
   b,e:=json.Marshal(sample);if e!=nil{return}
   ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
   req,e:=http.NewRequestWithContext(ctx,"POST",strings.TrimRight(server,"/")+"/api/v1/ingest",bytes.NewReader(b));if e!=nil{log.Print(e);return}
