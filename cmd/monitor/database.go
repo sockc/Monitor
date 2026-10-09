@@ -49,8 +49,8 @@ func queryHistory(ctx context.Context,db *sql.DB,name string,hours int)([]Point,
  return out,rows.Err()
 }
 func restoreNodes(s *Store)error{
- rows,err:=s.db.Query("SELECT payload FROM samples WHERE (name,ts) IN (SELECT name,MAX(ts) FROM samples GROUP BY name)");if err!=nil{return err};defer rows.Close()
- for rows.Next(){var raw string;if err=rows.Scan(&raw);err!=nil{return err};var p Sample;if json.Unmarshal([]byte(raw),&p)==nil{s.Nodes[p.Name]=Node{Sample:p,LastSeen:p.Timestamp}}}
+ rows,err:=s.db.Query("SELECT name,payload FROM samples WHERE (name,ts) IN (SELECT name,MAX(ts) FROM samples GROUP BY name) AND name NOT IN (SELECT name FROM agent_tokens WHERE hash='REVOKED')");if err!=nil{return err};defer rows.Close()
+ for rows.Next(){var name,raw string;if err=rows.Scan(&name,&raw);err!=nil{return err};var p Sample;if json.Unmarshal([]byte(raw),&p)==nil{p.Name=name;s.Nodes[name]=Node{Sample:p,LastSeen:p.Timestamp}}}
  return rows.Err()
 }
 
