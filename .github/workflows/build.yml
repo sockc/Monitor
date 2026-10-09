@@ -59,16 +59,16 @@ jobs:
           pattern: monitor-linux-*
           path: dist
           merge-multiple: true
-      - name: Publish V0.7.0
+      - name: Publish V0.7.1
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum monitor-linux-* > SHA256SUMS)
           HEAD_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
           if [ "$HEAD_SHA" != "${{ github.sha }}" ]; then echo "Skipping outdated run"; exit 0; fi
-          if gh release view v0.7.0 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload v0.7.0 dist/monitor-linux-* dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
-            gh release edit v0.7.0 --target "${{ github.sha }}" --repo "${{ github.repository }}"
+          if gh release view v0.7.1 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v0.7.1 dist/monitor-linux-* dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
+            gh release edit v0.7.1 --target "${{ github.sha }}" --repo "${{ github.repository }}"
             exit 0
           fi
-          gh release create v0.7.0 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.7.0" --notes "Grouped node overview, alert rules, history and customizable server port."
+          gh release create v0.7.1 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.7.1" --notes "Refined overview and dedicated statistics, alerts and settings views."
