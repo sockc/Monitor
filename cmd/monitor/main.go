@@ -125,7 +125,7 @@ func main(){
  if r.Method!="POST"{http.Error(w,"method",405);return}
  if !sameOrigin(r){http.Error(w,"origin",403);return}
  r.Body=http.MaxBytesReader(w,r.Body,8192)
- var in struct{Name string \`json:"name"\`; DisplayName string \`json:"display_name"\`; Group string \`json:"group"\`; Notes string \`json:"notes"\`}
+ var in struct{Name string `json:"name"`; DisplayName string `json:"display_name"`; Group string `json:"group"`; Notes string `json:"notes"`}
  if json.NewDecoder(r.Body).Decode(&in)!=nil||!validNodeName(in.Name)||len([]rune(in.DisplayName))>60||len([]rune(in.Group))>40||len([]rune(in.Notes))>500{http.Error(w,"invalid metadata",400);return}
  in.DisplayName=strings.TrimSpace(in.DisplayName);in.Group=strings.TrimSpace(in.Group);in.Notes=strings.TrimSpace(in.Notes)
  s.RLock();_,found:=s.Nodes[in.Name];s.RUnlock();if !found{http.Error(w,"unknown node",404);return}
