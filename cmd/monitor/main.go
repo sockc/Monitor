@@ -29,6 +29,14 @@ type Sample struct {
  OS string `json:"os"`
  Arch string `json:"arch"`
  CPUCores int `json:"cpu_cores,omitempty"`
+ CPUModel string `json:"cpu_model,omitempty"`
+ Load1 float64 `json:"load1,omitempty"`
+ Load5 float64 `json:"load5,omitempty"`
+ Load15 float64 `json:"load15,omitempty"`
+ SwapTotal uint64 `json:"swap_total,omitempty"`
+ SwapUsed uint64 `json:"swap_used,omitempty"`
+ DiskReadBytes uint64 `json:"disk_read_bytes,omitempty"`
+ DiskWriteBytes uint64 `json:"disk_write_bytes,omitempty"`
  MemoryTotal uint64 `json:"memory_total,omitempty"`
  MemoryUsed uint64 `json:"memory_used,omitempty"`
  DiskTotal uint64 `json:"disk_total,omitempty"`
@@ -41,7 +49,7 @@ type Sample struct {
  Uptime uint64 `json:"uptime"`
  Timestamp time.Time `json:"timestamp"`
 }
-type Node struct { Sample; LastSeen time.Time `json:"last_seen"`; RxSpeed float64 `json:"rx_speed"`; TxSpeed float64 `json:"tx_speed"` }
+type Node struct { Sample; LastSeen time.Time `json:"last_seen"`; RxSpeed float64 `json:"rx_speed"`; TxSpeed float64 `json:"tx_speed"`;DiskReadSpeed float64 `json:"disk_read_speed"`;DiskWriteSpeed float64 `json:"disk_write_speed"` }
 type Store struct { sync.RWMutex; Nodes map[string]Node `json:"nodes"`; file string; db *sql.DB }
 func (s *Store) save() error {
  s.RLock(); b,e:=json.MarshalIndent(s.Nodes,"","  ");s.RUnlock();if e!=nil{return e}
@@ -87,11 +95,11 @@ func main(){
   defer r.Body.Close()
   var sample Sample
   if e:=json.NewDecoder(r.Body).Decode(&sample);e!=nil{http.Error(w,"invalid JSON",400);return}
-  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal{http.Error(w,"invalid sample",400);return}
+  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal||sample.SwapUsed>sample.SwapTotal||len(sample.CPUModel)>256{http.Error(w,"invalid sample",400);return}
   sample.Timestamp=time.Now().UTC()
   if !validNodeToken(r.Context(),s.db,sample.Name,strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer "),key){http.Error(w,"unauthorized",401);return}
   if e:=recordSample(s.db,sample);e!=nil{log.Printf("db: %v",e);http.Error(w,"db write failed",500);return}
-  s.Lock();previous,exists:=s.Nodes[sample.Name];node:=Node{Sample:sample,LastSeen:sample.Timestamp};if exists {dt:=sample.Timestamp.Sub(previous.LastSeen).Seconds();if dt>0&&dt<120&&sample.Uptime>=previous.Uptime {if sample.RxBytes>=previous.RxBytes{node.RxSpeed=float64(sample.RxBytes-previous.RxBytes)/dt};if sample.TxBytes>=previous.TxBytes{node.TxSpeed=float64(sample.TxBytes-previous.TxBytes)/dt}}};s.Nodes[sample.Name]=node;s.Unlock()
+  s.Lock();previous,exists:=s.Nodes[sample.Name];node:=Node{Sample:sample,LastSeen:sample.Timestamp};if exists {dt:=sample.Timestamp.Sub(previous.LastSeen).Seconds();if dt>0&&dt<120&&sample.Uptime>=previous.Uptime {if sample.RxBytes>=previous.RxBytes{node.RxSpeed=float64(sample.RxBytes-previous.RxBytes)/dt};if sample.TxBytes>=previous.TxBytes{node.TxSpeed=float64(sample.TxBytes-previous.TxBytes)/dt};if sample.DiskReadBytes>=previous.DiskReadBytes{node.DiskReadSpeed=float64(sample.DiskReadBytes-previous.DiskReadBytes)/dt};if sample.DiskWriteBytes>=previous.DiskWriteBytes{node.DiskWriteSpeed=float64(sample.DiskWriteBytes-previous.DiskWriteBytes)/dt}}};s.Nodes[sample.Name]=node;s.Unlock()
   w.WriteHeader(204)
  })
  authorized:=auth.require
@@ -157,7 +165,7 @@ func main(){
   if !authorized(w,r){return}
   meta:=map[string][3]string{};rows,e:=s.db.QueryContext(r.Context(),"SELECT name,display_name,group_name,notes FROM node_metadata");if e!=nil{http.Error(w,"database error",500);return};for rows.Next(){var name,display,group,notes string;if rows.Scan(&name,&display,&group,&notes)==nil{meta[name]=[3]string{display,group,notes}}};rows.Close()
   s.RLock();out:=make([]map[string]any,0,len(s.Nodes))
-  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"notes":meta[n.Name][2],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
+  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"notes":meta[n.Name][2],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"cpu_model":n.CPUModel,"load1":n.Load1,"load5":n.Load5,"load15":n.Load15,"swap_total":n.SwapTotal,"swap_used":n.SwapUsed,"disk_read_speed":n.DiskReadSpeed,"disk_write_speed":n.DiskWriteSpeed,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(out)
  })
  mux.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){
