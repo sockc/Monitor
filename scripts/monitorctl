@@ -30,8 +30,8 @@ with_scripts(){
  if [[ "$script" == upgrade.sh ]];then
   if ! fetch_script backup.sh "$tmp";then rm -rf "$tmp";return 1;fi
  fi
- bash "$tmp/$script" "$@"
- local rc=$?
+ local rc=0
+ bash "$tmp/$script" "$@" || rc=$?
  rm -rf "$tmp"
  return "$rc"
 }
@@ -128,8 +128,8 @@ backup_server(){
  installed server || fail "没有已安装的 Server"
  local tmp;tmp="$(mktemp -d)"
  fetch_script backup.sh "$tmp"
- bash "$tmp/backup.sh"
- local rc=$?
+ local rc=0
+ bash "$tmp/backup.sh" || rc=$?
  rm -rf "$tmp"
  return "$rc"
 }
@@ -191,15 +191,15 @@ menu(){
   local pick role
   read -r -p "请选择：" pick || break
   case "$pick" in
-   1) install_role server;;
-   2) install_role agent;;
-   3) upgrade_role server;;
-   4) upgrade_role agent;;
+   1) bash "$0" install server || note "安装失败，可查看上方错误信息";;
+   2) bash "$0" install agent || note "安装失败，可查看上方错误信息";;
+   3) bash "$0" upgrade server || note "升级失败，可查看上方错误信息";;
+   4) bash "$0" upgrade agent || note "升级失败，可查看上方错误信息";;
    5) status_role;;
-   6) read -r -p "查看哪个服务日志？[server/agent]：" role;valid_role "$role";logs_role "$role";;
-   7) backup_server;;
-   8) read -r -p "卸载哪个服务？[server/agent]：" role;valid_role "$role";uninstall_role "$role";;
-   9) update_self;;
+   6) read -r -p "查看哪个服务日志？[server/agent]：" role;bash "$0" logs "$role" || note "读取日志失败";;
+   7) bash "$0" backup || note "备份失败";;
+   8) read -r -p "卸载哪个服务？[server/agent]：" role;bash "$0" uninstall "$role" || note "卸载未完成";;
+   9) bash "$0" self-update || note "更新管理器失败";;
    0) break;;
    *) note "无效选项";;
   esac
