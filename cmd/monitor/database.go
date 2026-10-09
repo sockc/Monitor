@@ -51,7 +51,10 @@ func queryHistory(ctx context.Context,db *sql.DB,name string,hours int)([]Point,
 func restoreNodes(s *Store)error{
  rows,err:=s.db.Query("SELECT name,payload FROM samples WHERE (name,ts) IN (SELECT name,MAX(ts) FROM samples GROUP BY name) AND name NOT IN (SELECT name FROM agent_tokens WHERE hash='REVOKED')");if err!=nil{return err};defer rows.Close()
  for rows.Next(){var name,raw string;if err=rows.Scan(&name,&raw);err!=nil{return err};var p Sample;if json.Unmarshal([]byte(raw),&p)==nil{p.Name=name;s.Nodes[name]=Node{Sample:p,LastSeen:p.Timestamp}}}
- return rows.Err()
+ if err:=rows.Err();err!=nil{return err}
+ revoked,err:=s.db.Query("SELECT name FROM agent_tokens WHERE hash='REVOKED'");if err!=nil{return err};defer revoked.Close()
+ for revoked.Next(){var name string;if err:=revoked.Scan(&name);err!=nil{return err};delete(s.Nodes,name)}
+ return revoked.Err()
 }
 
 type TrafficBucket struct {Time int64 `json:"time"`;RX uint64 `json:"rx"`;TX uint64 `json:"tx"`}
