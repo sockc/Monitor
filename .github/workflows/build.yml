@@ -33,6 +33,8 @@ jobs:
               f.flush()
               subprocess.run(["node", "--check", f.name], check=True)
           PY
+      - name: Check deployment shell scripts
+        run: bash -n scripts/install-release.sh scripts/upgrade.sh scripts/backup.sh
       - name: Test
         run: go test ./...
       - name: Build
