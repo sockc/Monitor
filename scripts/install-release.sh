@@ -4,7 +4,7 @@ if [[ "${EUID}" != 0 ]]; then echo "Please run as root" >&2;exit 1;fi
 MODE="${1:-}";if [[ "$MODE" != "server" && "$MODE" != "agent" ]];then echo "Usage: sudo bash install-release.sh server|agent" >&2;exit 1;fi
 ARCH="$(uname -m)"
 case "$ARCH" in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "Unsupported CPU $ARCH";exit 1;;esac
-VERSION="${MONITOR_VERSION:-v0.6.0}"
+VERSION="${MONITOR_VERSION:-v0.7.0}"
 BASE="https://github.com/sockc/Monitor/releases/download/${VERSION}"
 TMP="$(mktemp -d)";trap 'rm -rf "$TMP"' EXIT
 curl -fLSs --retry 3 "$BASE/monitor-linux-$ARCH" -o "$TMP/monitor"
@@ -16,12 +16,13 @@ if [[ "$MODE" == server ]];then
  id monitor >/dev/null 2>&1 || useradd --system --home-dir /var/lib/monitor --shell /usr/sbin/nologin monitor
  install -d -m 0700 -o monitor -g monitor /var/lib/monitor
  ENVFILE=/etc/monitor/server.env
+ if ! grep -q "^MONITOR_LISTEN=" "$ENVFILE" 2>/dev/null;then printf "MONITOR_LISTEN=127.0.0.1:%s\\n" "${MONITOR_PORT:-8090}" >> "$ENVFILE";fi
  if [[ ! -f "$ENVFILE" ]];then
   umask 077
   printf 'MONITOR_AGENT_TOKEN=%s\nMONITOR_ADMIN_TOKEN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > "$ENVFILE"
  fi
  USERNAME=monitor
- CMD='/usr/local/bin/monitor -mode server -listen 127.0.0.1:8090'
+ CMD='/usr/local/bin/monitor -mode server'
 else
  id monitor-agent >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin monitor-agent
  ENVFILE=/etc/monitor/agent.env

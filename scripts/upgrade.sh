@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ "${EUID}" -eq 0 ]] || { echo "root required";exit 1; }
 MODE="${1:-}";[[ "$MODE" == server || "$MODE" == agent ]] || { echo "Usage: sudo bash upgrade.sh server|agent";exit 1; }
-VERSION="${MONITOR_VERSION:-v0.6.0}"
+VERSION="${MONITOR_VERSION:-v0.7.0}"
 ARCH="$(uname -m)";case "$ARCH" in x86_64)ARCH=amd64;;aarch64|arm64)ARCH=arm64;;*)exit 1;;esac
 ROOT="https://github.com/sockc/Monitor/releases/download/$VERSION"
 T="$(mktemp -d)";trap 'rm -rf "$T"' EXIT
@@ -19,7 +19,7 @@ install -m 0755 "$T/monitor" /usr/local/bin/monitor.new
 mv -f /usr/local/bin/monitor.new /usr/local/bin/monitor
 systemctl restart "monitor-$MODE.service"
 sleep 3
-if ! systemctl is-active --quiet "monitor-$MODE.service" || { [[ "$MODE" == server ]] && ! curl -fsS --max-time 3 http://127.0.0.1:8090/healthz >/dev/null; };then
+if ! systemctl is-active --quiet "monitor-$MODE.service" || { [[ "$MODE" == server ]] && ! curl -fsS --max-time 3 http://127.0.0.1:"${MONITOR_HEALTH_PORT:-8090}"/healthz >/dev/null; };then
  install -m 0755 "$T/previous" /usr/local/bin/monitor.rollback
  mv -f /usr/local/bin/monitor.rollback /usr/local/bin/monitor
  systemctl restart "monitor-$MODE.service"

@@ -53,7 +53,7 @@ func env(k, fallback string)string {if x:=os.Getenv(k);x!=""{return x};return fa
 func equal(a,b string)bool{return subtle.ConstantTimeCompare([]byte(a),[]byte(b))==1}
 func main(){
  mode:=flag.String("mode","server","server or agent")
- listen:=flag.String("listen","127.0.0.1:8090","HTTP listen address")
+ listen:=flag.String("listen",env("MONITOR_LISTEN","127.0.0.1:8090"),"HTTP listen address")
  server:=flag.String("server","","agent server URL, e.g. https://monitor.example.com")
  name:=flag.String("name","","agent display name")
  token:=flag.String("token","","shared ingestion token (or MONITOR_AGENT_TOKEN)")
@@ -68,6 +68,7 @@ func main(){
  admin:=os.Getenv("MONITOR_ADMIN_TOKEN")
  s:=&Store{Nodes:map[string]Node{},file:*file}
  db,e:=openDB(*dbpath);if e!=nil{log.Fatal(e)};defer db.Close();s.db=db
+ if e:=alertSchema(db);e!=nil{log.Fatal(e)}
  if b,e:=os.ReadFile(*file);e==nil{if e=json.Unmarshal(b,&s.Nodes);e!=nil{log.Printf("invalid data file: %v",e)}}
  if e:=restoreNodes(s);e!=nil{log.Printf("restore nodes: %v",e)}
  auth,err:=newAuth(db,admin);if err!=nil{log.Fatal(err)}
@@ -136,6 +137,17 @@ func main(){
  if !authorized(w,r){return};name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if !validNodeName(name){http.Error(w,"invalid name",400);return}
  result,e:=queryTraffic(r.Context(),s.db,name,hours);if e!=nil{http.Error(w,"database error",500);return};w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(result)
  })
+ mux.HandleFunc("/api/v1/alerts",func(w http.ResponseWriter,r *http.Request){
+ if !authorized(w,r){return}
+ w.Header().Set("Cache-Control","no-store");w.Header().Set("Content-Type","application/json")
+ if r.Method=="GET"{items,e:=readAlerts(r.Context(),s.db);if e!=nil{http.Error(w,"database error",500);return};json.NewEncoder(w).Encode(items);return}
+ if r.Method!="POST"||!sameOrigin(r){http.Error(w,"invalid method or origin",403);return}
+ r.Body=http.MaxBytesReader(w,r.Body,4096)
+ var cfg AlertSettings
+ if json.NewDecoder(r.Body).Decode(&cfg)!=nil||cfg.OfflineSeconds<30||cfg.OfflineSeconds>3600||cfg.CPUThreshold<1||cfg.CPUThreshold>100||cfg.MemoryThreshold<1||cfg.MemoryThreshold>100||cfg.DiskThreshold<1||cfg.DiskThreshold>100||cfg.DurationSeconds<30||cfg.DurationSeconds>3600||len(cfg.Webhook)>512 {http.Error(w,"invalid settings",400);return}
+ if cfg.Webhook!=""&&!validWebhook(cfg.Webhook){http.Error(w,"webhook must be HTTPS without credentials",400);return}
+ if e:=writeAlertSettings(s.db,cfg);e!=nil{http.Error(w,"database error",500);return};w.WriteHeader(204)
+ })
  mux.HandleFunc("/api/v1/nodes",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}
   meta:=map[string][3]string{};rows,e:=s.db.QueryContext(r.Context(),"SELECT name,display_name,group_name,notes FROM node_metadata");if e!=nil{http.Error(w,"database error",500);return};for rows.Next(){var name,display,group,notes string;if rows.Scan(&name,&display,&group,&notes)==nil{meta[name]=[3]string{display,group,notes}}};rows.Close()
@@ -150,6 +162,7 @@ func main(){
   w.Header().Set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
   dashboard.Execute(w,nil)
  })
+ go startAlertLoop(s)
  go func(){t:=time.NewTicker(30*time.Second);defer t.Stop();for range t.C{if e:=s.save();e!=nil{log.Printf("save: %v",e)};if _,e:=s.db.Exec("DELETE FROM samples WHERE ts < ?",time.Now().Add(-30*24*time.Hour).Unix());e!=nil{log.Printf("retention: %v",e)}}}()
  log.Printf("Monitor %s server listening on %s (%s)",runtime.Version(),*listen,*file)
  srv:=&http.Server{Addr:*listen,Handler:mux,ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:15*time.Second,IdleTimeout:60*time.Second}
