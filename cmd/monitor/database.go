@@ -10,6 +10,7 @@ import (
  "fmt"
  "os"
  "path/filepath"
+ "sort"
  "time"
 )
 type Point struct{Time int64 `json:"time"`;CPU float64 `json:"cpu"`; Memory float64 `json:"memory"`; Disk float64 `json:"disk"`}
@@ -50,4 +51,32 @@ func restoreNodes(s *Store)error{
  rows,err:=s.db.Query("SELECT payload FROM samples WHERE (name,ts) IN (SELECT name,MAX(ts) FROM samples GROUP BY name)");if err!=nil{return err};defer rows.Close()
  for rows.Next(){var raw string;if err=rows.Scan(&raw);err!=nil{return err};var p Sample;if json.Unmarshal([]byte(raw),&p)==nil{s.Nodes[p.Name]=Node{Sample:p,LastSeen:p.Timestamp}}}
  return rows.Err()
+}
+
+type TrafficBucket struct {Time int64 `json:"time"`;RX uint64 `json:"rx"`;TX uint64 `json:"tx"`}
+type TrafficSummary struct {RX uint64 `json:"rx"`;TX uint64 `json:"tx"`;Buckets []TrafficBucket `json:"buckets"`}
+func validNodeName(n string)bool{if len(n)<1||len(n)>64{return false};for _,r:=range n{if !((r>='a'&&r<='z')||(r>='A'&&r<='Z')||(r>='0'&&r<='9')||r=='-'||r=='_'){return false}};return true}
+func queryTraffic(ctx context.Context,db *sql.DB,name string,hours int)(TrafficSummary,error){
+ // Counters are monotonic between restarts; a decrease indicates counter reset.
+ // Reject implausibly large jumps; aggregate by hourly buckets (30d max 720).
+ rows,err:=db.QueryContext(ctx,"SELECT ts,payload FROM samples WHERE name=? AND ts>=? ORDER BY ts",name,time.Now().Add(-time.Duration(hours)*time.Hour).Unix())
+ out:=TrafficSummary{Buckets:[]TrafficBucket{}};if err!=nil{return out,err};defer rows.Close()
+ buckets:=map[int64]*TrafficBucket{};var previous Sample;var seen bool
+ for rows.Next(){
+  var ts int64;var raw string;if err=rows.Scan(&ts,&raw);err!=nil{return out,err}
+  var current Sample;if json.Unmarshal([]byte(raw),&current)!=nil{continue}
+  if seen{
+   var rx,tx uint64
+   // Network counters can reset on reboots, or an interface can disappear.
+   if current.Uptime>=previous.Uptime && current.RxBytes>=previous.RxBytes {rx=current.RxBytes-previous.RxBytes}
+   if current.Uptime>=previous.Uptime && current.TxBytes>=previous.TxBytes {tx=current.TxBytes-previous.TxBytes}
+   bucket:=ts/3600*3600
+   b:=buckets[bucket];if b==nil{b=&TrafficBucket{Time:bucket};buckets[bucket]=b}
+   b.RX+=rx;b.TX+=tx;out.RX+=rx;out.TX+=tx
+  }
+  previous=current;seen=true
+ }
+ if err=rows.Err();err!=nil{return out,err}
+ keys:=make([]int64,0,len(buckets));for t:=range buckets{keys=append(keys,t)};sort.Slice(keys,func(i,j int)bool{return keys[i]<keys[j]});for _,t:=range keys{out.Buckets=append(out.Buckets,*buckets[t])}
+ return out,nil
 }

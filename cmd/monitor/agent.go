@@ -15,7 +15,7 @@ import (
 func runAgent(server,name,token string,interval time.Duration){
  if server==""{server=os.Getenv("MONITOR_SERVER")}
  if !strings.HasPrefix(server,"https://")&&!strings.HasPrefix(server,"http://127.0.0.1:"){log.Fatal("MONITOR_SERVER must use HTTPS (or localhost for testing)")}
- if name==""{name,_=os.Hostname()};if name==""{log.Fatal("name is required")}
+ if name==""{name=os.Getenv("MONITOR_NODE_NAME")};if name==""{name,_=os.Hostname()};if name==""{log.Fatal("name is required")}
  if interval<time.Second{log.Fatal("interval must be >= 1s")}
  client:=&http.Client{Timeout:10*time.Second}
  prev:=readCPU()

@@ -92,9 +92,11 @@ func main(){
  }
  mux.HandleFunc("/api/v1/tokens",func(w http.ResponseWriter,r *http.Request){
  if !authorized(w,r){return};if r.Method!="POST"{http.Error(w,"method",405);return}
- r.Body=http.MaxBytesReader(w,r.Body,4096);var req struct{Name string `json:"name"`};if json.NewDecoder(r.Body).Decode(&req)!=nil||len(req.Name)<1||len(req.Name)>100{http.Error(w,"invalid name",400);return}
+  if r.Header.Get("Origin")!="" && r.Header.Get("Origin")!="https://"+r.Host && r.Header.Get("Origin")!="http://"+r.Host{http.Error(w,"origin",403);return}
+ r.Body=http.MaxBytesReader(w,r.Body,4096);var req struct{Name string `json:"name"`};if json.NewDecoder(r.Body).Decode(&req)!=nil||!validNodeName(req.Name){http.Error(w,"invalid name",400);return}
  b:=make([]byte,32);if _,e:=rand.Read(b);e!=nil{http.Error(w,"random failed",500);return};secret:=hex.EncodeToString(b);hash:=sha256.Sum256([]byte(secret))
  if _,e:=s.db.ExecContext(r.Context(),"INSERT INTO agent_tokens(name, hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",req.Name,hex.EncodeToString(hash[:]));e!=nil{http.Error(w,"db failed",500);return}
+ s.Lock();if _,exists:=s.Nodes[req.Name];!exists{s.Nodes[req.Name]=Node{Sample:Sample{Name:req.Name}}};s.Unlock()
  w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(map[string]string{"name":req.Name,"token":secret})
  })
  mux.HandleFunc("/login",func(w http.ResponseWriter,r *http.Request){
@@ -113,6 +115,10 @@ func main(){
  mux.HandleFunc("/api/v1/history",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}; name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if len(name)==0||len(name)>100{http.Error(w,"invalid name",400);return}
   points,e:=queryHistory(r.Context(),s.db,name,hours);if e!=nil{http.Error(w,"database error",500);return};w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(points)
+ })
+ mux.HandleFunc("/api/v1/traffic",func(w http.ResponseWriter,r *http.Request){
+ if !authorized(w,r){return};name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if !validNodeName(name){http.Error(w,"invalid name",400);return}
+ result,e:=queryTraffic(r.Context(),s.db,name,hours);if e!=nil{http.Error(w,"database error",500);return};w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(result)
  })
  mux.HandleFunc("/api/v1/nodes",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}

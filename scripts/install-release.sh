@@ -4,7 +4,7 @@ if [[ "${EUID}" != 0 ]]; then echo "Please run as root" >&2;exit 1;fi
 MODE="${1:-}";if [[ "$MODE" != "server" && "$MODE" != "agent" ]];then echo "Usage: sudo bash install-release.sh server|agent" >&2;exit 1;fi
 ARCH="$(uname -m)"
 case "$ARCH" in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "Unsupported CPU $ARCH";exit 1;;esac
-VERSION="${MONITOR_VERSION:-v0.2.0}"
+VERSION="${MONITOR_VERSION:-v0.3.0}"
 BASE="https://github.com/sockc/Monitor/releases/download/${VERSION}"
 TMP="$(mktemp -d)";trap 'rm -rf "$TMP"' EXIT
 curl -fLSs --retry 3 "$BASE/monitor-linux-$ARCH" -o "$TMP/monitor"
@@ -26,13 +26,13 @@ else
  id monitor-agent >/dev/null 2>&1 || useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin monitor-agent
  ENVFILE=/etc/monitor/agent.env
  if [[ ! -f "$ENVFILE" ]];then
-  if [[ -z "${MONITOR_SERVER:-}" || -z "${MONITOR_AGENT_TOKEN:-}" ]];then
+  if [[ -z "${MONITOR_SERVER:-}" || -z "${MONITOR_AGENT_TOKEN:-}" || -z "${MONITOR_NODE_NAME:-}" ]];then
    echo "Set MONITOR_SERVER=https://your-domain and MONITOR_AGENT_TOKEN=<secret> before first install" >&2
    exit 1
   fi
   case "$MONITOR_SERVER" in https://*|http://127.0.0.1:*) ;; *) echo "MONITOR_SERVER needs HTTPS" >&2;exit 1;; esac
   umask 077
-  printf 'MONITOR_SERVER=%s\nMONITOR_AGENT_TOKEN=%s\n' "$MONITOR_SERVER" "$MONITOR_AGENT_TOKEN" > "$ENVFILE"
+  printf 'MONITOR_SERVER=%s\nMONITOR_AGENT_TOKEN=%s\nMONITOR_NODE_NAME=%s\n' "$MONITOR_SERVER" "$MONITOR_AGENT_TOKEN" "$MONITOR_NODE_NAME" > "$ENVFILE"
  fi
  USERNAME=monitor-agent
  CMD='/usr/local/bin/monitor -mode agent'
