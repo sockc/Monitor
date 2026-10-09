@@ -39,6 +39,13 @@ else
  CMD='/usr/local/bin/monitor -mode agent'
 fi
 chmod 600 "$ENVFILE"
+if [[ -e "/etc/systemd/system/monitor-$MODE.service" ]]; then
+ echo "Existing systemd unit detected; preserving current port and settings."
+ systemctl daemon-reload
+ systemctl restart "monitor-$MODE.service"
+ systemctl status "monitor-$MODE.service" --no-pager
+ exit 0
+fi
 cat > "/etc/systemd/system/monitor-$MODE.service" <<EOF
 [Unit]
 Description=Monitor $MODE
