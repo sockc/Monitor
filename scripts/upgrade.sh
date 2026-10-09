@@ -15,11 +15,13 @@ if [[ "$MODE" == server ]];then
  if [[ -f "$SCRIPT" ]];then bash "$SCRIPT";else echo "Run a database backup before upgrading" >&2;exit 1;fi
 fi
 cp -p /usr/local/bin/monitor "$T/previous"
-install -m 0755 "$T/monitor" /usr/local/bin/monitor
+install -m 0755 "$T/monitor" /usr/local/bin/monitor.new
+mv -f /usr/local/bin/monitor.new /usr/local/bin/monitor
 systemctl restart "monitor-$MODE.service"
 sleep 3
-if ! systemctl is-active --quiet "monitor-$MODE.service";then
- install -m 0755 "$T/previous" /usr/local/bin/monitor
+if ! systemctl is-active --quiet "monitor-$MODE.service" || { [[ "$MODE" == server ]] && ! curl -fsS --max-time 3 http://127.0.0.1:8090/healthz >/dev/null; };then
+ install -m 0755 "$T/previous" /usr/local/bin/monitor.rollback
+ mv -f /usr/local/bin/monitor.rollback /usr/local/bin/monitor
  systemctl restart "monitor-$MODE.service"
  echo "Upgrade failed; binary rolled back" >&2;exit 1
 fi
