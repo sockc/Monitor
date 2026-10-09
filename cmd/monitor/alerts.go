@@ -9,7 +9,7 @@ import (
  "net"
  "net/http"
  "net/url"
- "strings"
+  "strings"
  "time"
 )
 type AlertSettings struct {
@@ -65,6 +65,22 @@ func deliverWebhook(target,node,kind,status string){
  res,e:=client.Do(req);if e==nil{res.Body.Close()}
 }
 type conditionState struct{since time.Time;active bool}
+func expirationKind(expires,zone string,now time.Time)string{
+ if expires==""{return ""};loc,e:=time.LoadLocation(zone);if e!=nil{loc=time.UTC}
+ end,e:=time.ParseInLocation("2006-01-02",expires,loc);if e!=nil{return ""}
+ local:=now.In(loc);today:=time.Date(local.Year(),local.Month(),local.Day(),0,0,0,0,loc)
+ if today.After(end){return "expiry_overdue"}
+ if !today.Before(end.AddDate(0,0,-7)){return "expiry_7"}
+ if !today.Before(end.AddDate(0,0,-15)){return "expiry_15"}
+ if !today.Before(end.AddDate(0,0,-30)){return "expiry_30"}
+ return ""
+}
+func quotaKind(p PeriodTraffic)string{
+ if p.QuotaGB<=0||!p.HasSamples{return ""}
+ quota:=p.QuotaGB*1000000000;used:=float64(p.MonthRX)+float64(p.MonthTX)
+ switch{case used>=quota:return "quota_100";case used>=quota*0.9:return "quota_90";case used>=quota*0.8:return "quota_80";default:return ""}
+}
+
 func startAlertLoop(s *Store){
  if e:=alertSchema(s.db);e!=nil{return}
  states:=map[string]conditionState{}
@@ -73,6 +89,7 @@ func startAlertLoop(s *Store){
   cfg:=getAlertSettings(s.db)
   s.RLock();nodes:=make([]Node,0,len(s.Nodes));for _,n:=range s.Nodes{nodes=append(nodes,n)};s.RUnlock()
   now:=time.Now()
+  summaries,e:=periodTraffic(context.Background(),s.db);if e!=nil{continue}
   for _,n:=range nodes{
    if n.LastSeen.IsZero(){continue}
    tests:=[]struct{kind string;bad bool;duration time.Duration}{
@@ -81,8 +98,13 @@ func startAlertLoop(s *Store){
     {"memory",n.Memory>=cfg.MemoryThreshold&&now.Sub(n.LastSeen)<30*time.Second,time.Duration(cfg.DurationSeconds)*time.Second},
     {"disk",n.Disk>=cfg.DiskThreshold&&now.Sub(n.LastSeen)<30*time.Second,time.Duration(cfg.DurationSeconds)*time.Second},
    }
+   if p,ok:=summaries[n.Name];ok{
+    stage:=quotaKind(p);for _,kind:=range []string{"quota_80","quota_90","quota_100"}{tests=append(tests,struct{kind string;bad bool;duration time.Duration}{kind,kind==stage,0})}
+    expiry:=expirationKind(p.ExpiresOn,p.Timezone,now);for _,kind:=range []string{"expiry_30","expiry_15","expiry_7","expiry_overdue"}{tests=append(tests,struct{kind string;bad bool;duration time.Duration}{kind,kind==expiry,0})}
+   }
    for _,t:=range tests{
-    id:=n.Name+"|"+t.kind;st:=states[id]
+    id:=n.Name+"|"+t.kind;st,seen:=states[id]
+    if !seen{var count int;_ = s.db.QueryRow("SELECT COUNT(*) FROM alert_events WHERE node=? AND kind=? AND end=0",n.Name,t.kind).Scan(&count);st.active=count>0}
     if t.bad{
      if st.since.IsZero(){st.since=now}
      if !st.active&&now.Sub(st.since)>=t.duration{
