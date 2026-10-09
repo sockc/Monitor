@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+# Monitor single entry point. Installer and updater stay separate internally so
+# deployments made with earlier releases remain compatible.
+set -euo pipefail
+
+SELF="/usr/local/bin/monitorctl"
+RAW="https://raw.githubusercontent.com/sockc/Monitor/main/scripts"
+VERSION="${MONITOR_VERSION:-v0.9.3}"
+
+note(){ printf '%s\n' "$*"; }
+fail(){ printf '错误：%s\n' "$*" >&2;exit 1; }
+need_root(){ [[ "${EUID}" -eq 0 ]] || fail "请使用 sudo 运行：sudo monitorctl $*"; }
+available(){ command -v "$1" >/dev/null 2>&1 || fail "未找到依赖命令：$1"; }
+installed(){ systemctl cat "monitor-$1.service" >/dev/null 2>&1; }
+
+fetch_script(){
+ local name="$1" dir="$2"
+ available curl
+ curl --proto '=https' --tlsv1.2 -fLsS --retry 3 --connect-timeout 15 \
+  "$RAW/$name" -o "$dir/$name" || fail "下载 $name 失败，请检查网络连接"
+ bash -n "$dir/$name" || fail "$name 语法检查未通过，已停止"
+}
+
+with_scripts(){
+ local script="$1";shift
+ local tmp
+ tmp="$(mktemp -d)"
+ # Do not use a global EXIT trap: interactive sessions can run many commands.
+ if ! fetch_script "$script" "$tmp";then rm -rf "$tmp";return 1;fi
+ if [[ "$script" == upgrade.sh ]];then
+  if ! fetch_script backup.sh "$tmp";then rm -rf "$tmp";return 1;fi
+ fi
+ bash "$tmp/$script" "$@"
+ local rc=$?
+ rm -rf "$tmp"
+ return "$rc"
+}
+
+validate_port(){
+ [[ "$1" =~ ^[0-9]{1,5}$ ]] && ((10#$1>=1 && 10#$1<=65535)) || fail "端口应为 1–65535"
+}
+
+install_role(){
+ local role="$1"
+ need_root "install $role"
+ available systemctl
+ if installed "$role";then fail "monitor-$role 已安装，请使用：monitorctl upgrade $role";fi
+ if [[ "$role" == server ]];then
+  local port="${MONITOR_PORT:-8090}"
+  if [[ -t 0 && -z "${MONITOR_PORT:-}" ]];then
+   read -r -p "监听端口（仅绑定本机，默认 8090）[$port]：" input
+   port="${input:-$port}"
+  fi
+  validate_port "$port"
+  note "Server 将监听 127.0.0.1:$port，公网 HTTPS 需由反向代理提供。"
+  MONITOR_PORT="$port" MONITOR_VERSION="$VERSION" with_scripts install-release.sh server
+ else
+  local url="${MONITOR_SERVER:-}" name="${MONITOR_NODE_NAME:-}" token="${MONITOR_AGENT_TOKEN:-}"
+  if [[ -z "$url" || -z "$name" || -z "$token" ]] && [[ ! -t 0 ]];then
+   fail "非交互安装 Agent 需要 MONITOR_SERVER、MONITOR_NODE_NAME、MONITOR_AGENT_TOKEN"
+  fi
+  if [[ -z "$url" ]];then read -r -p "Server HTTPS 地址：" url;fi
+  if [[ -z "$name" ]];then read -r -p "节点标识（英文数字_-）：" name;fi
+  if [[ -z "$token" ]];then
+   read -r -s -p "节点专属令牌（输入时不显示）：" token
+   printf '\n'
+  fi
+  [[ "$name" =~ ^[a-zA-Z0-9_-]{1,64}$ ]] || fail "节点标识无效"
+  [[ "$url" =~ ^https://[^[:space:]]+$ || "$url" =~ ^http://127\.0\.0\.1:[0-9]+$ ]] || fail "Server 地址必须为 HTTPS，或本地测试地址"
+  [[ -n "$token" && "$token" != *[[:space:]]* ]] || fail "令牌不能为空或包含空格"
+  note "准备安装 Agent：$name → $url"
+  MONITOR_SERVER="$url" MONITOR_NODE_NAME="$name" MONITOR_AGENT_TOKEN="$token" MONITOR_VERSION="$VERSION" with_scripts install-release.sh agent
+ fi
+}
+
+upgrade_role(){
+ local role="$1"
+ need_root "upgrade $role"
+ available systemctl
+ installed "$role" || fail "未检测到 monitor-$role.service，请先安装"
+ local selected="$role" other=""
+ if installed server && installed agent;then
+  selected=server
+  other=agent
+  note "检测到 Server 和 Agent 共用二进制文件：先备份并升级 Server，然后重启 Agent。"
+ fi
+ if [[ "$selected" == server ]];then
+  local port="${MONITOR_HEALTH_PORT:-}"
+  if [[ -z "$port" && -f /etc/monitor/server.env ]];then
+   port="$(sed -nE 's/^MONITOR_LISTEN=127[.]0[.]0[.]1:([0-9]+)$/\1/p' /etc/monitor/server.env | tail -1)"
+  fi
+  if [[ -n "$port" ]];then
+   MONITOR_HEALTH_PORT="$port" MONITOR_VERSION="$VERSION" with_scripts upgrade.sh server
+  else
+   MONITOR_VERSION="$VERSION" with_scripts upgrade.sh server
+  fi
+ else
+  MONITOR_VERSION="$VERSION" with_scripts upgrade.sh agent
+ fi
+ if [[ -n "$other" ]];then
+  systemctl restart monitor-agent.service
+  systemctl is-active --quiet monitor-agent.service || fail "Agent 重启后未运行，请查看日志"
+ fi
+}
+
+status_role(){
+ local role="${1:-}"
+ available systemctl
+ local r state
+ for r in server agent;do
+  [[ -z "$role" || "$role" == "$r" ]] || continue
+  if installed "$r";then
+   state="$(systemctl is-active "monitor-$r.service" 2>/dev/null || true)"
+   printf '%-8s %s\n' "$r" "${state:-unknown}"
+  else
+   printf '%-8s %s\n' "$r" "未安装"
+  fi
+ done
+}
+logs_role(){
+ local role="$1"
+ available journalctl
+ installed "$role" || fail "服务未安装：$role"
+ journalctl -u "monitor-$role.service" -n 80 --no-pager
+}
+backup_server(){
+ need_root backup
+ installed server || fail "没有已安装的 Server"
+ local tmp;tmp="$(mktemp -d)"
+ fetch_script backup.sh "$tmp"
+ bash "$tmp/backup.sh"
+ local rc=$?
+ rm -rf "$tmp"
+ return "$rc"
+}
+uninstall_role(){
+ local role="$1"
+ need_root "uninstall $role"
+ installed "$role" || fail "服务未安装：$role"
+ local answer=""
+ note "即将停止并移除 monitor-$role.service。"
+ note "默认保留 /etc/monitor、/var/lib/monitor、/var/backups/monitor 及 /usr/local/bin/monitor。"
+ [[ -t 0 ]] || fail "卸载需要交互确认，不允许静默卸载"
+ read -r -p "请输入 REMOVE 确认卸载 $role：" answer
+ [[ "$answer" == REMOVE ]] || { note "已取消";return 0; }
+ systemctl disable --now "monitor-$role.service"
+ # Only delete a unit managed by this installer, not an arbitrary distro unit.
+ if [[ -f "/etc/systemd/system/monitor-$role.service" ]];then
+  rm -f "/etc/systemd/system/monitor-$role.service"
+ else
+  note "systemd unit 未位于 /etc/systemd/system，未删除其它位置的文件"
+ fi
+ systemctl daemon-reload
+ note "服务已卸载。配置、数据库和程序文件均已保留。"
+}
+update_self(){
+ need_root self-update
+ local tmp;tmp="$(mktemp -d)"
+ fetch_script monitorctl "$tmp"
+ install -m 0755 "$tmp/monitorctl" "$SELF"
+ rm -rf "$tmp"
+ note "monitorctl 已更新：$SELF"
+}
+usage(){
+ cat <<'EOF'
+Monitor 管理器
+  monitorctl                        中文交互菜单
+  sudo monitorctl install server    安装 Server
+  sudo monitorctl install agent     安装 Agent
+  sudo monitorctl upgrade server    升级 Server
+  sudo monitorctl upgrade agent     升级 Agent
+  monitorctl status [server|agent]  查看服务状态
+  sudo monitorctl logs server|agent 查看最近日志
+  sudo monitorctl backup            备份数据库
+  sudo monitorctl uninstall server|agent  卸载服务（保留数据）
+  sudo monitorctl self-update       更新管理器本身
+  monitorctl version                显示管理器默认版本
+EOF
+}
+valid_role(){ [[ "$1" == server || "$1" == agent ]] || fail "请选择 server 或 agent"; }
+menu(){
+ need_root
+ while true;do
+  printf '\n══════ Monitor 管理中心 ══════\n'
+  status_role
+  printf '\n1. 安装 Server       2. 安装 Agent\n'
+  printf '3. 升级 Server       4. 升级 Agent\n'
+  printf '5. 查看状态          6. 查看日志\n'
+  printf '7. 备份 Server       8. 卸载服务\n'
+  printf '9. 更新管理器        0. 退出\n'
+  local pick role
+  read -r -p "请选择：" pick || break
+  case "$pick" in
+   1) install_role server;;
+   2) install_role agent;;
+   3) upgrade_role server;;
+   4) upgrade_role agent;;
+   5) status_role;;
+   6) read -r -p "查看哪个服务日志？[server/agent]：" role;valid_role "$role";logs_role "$role";;
+   7) backup_server;;
+   8) read -r -p "卸载哪个服务？[server/agent]：" role;valid_role "$role";uninstall_role "$role";;
+   9) update_self;;
+   0) break;;
+   *) note "无效选项";;
+  esac
+ done
+}
+main(){
+ local cmd="${1:-menu}" role="${2:-}"
+ case "$cmd" in
+  menu) menu;;
+  install) valid_role "$role";install_role "$role";;
+  upgrade) valid_role "$role";upgrade_role "$role";;
+  status) [[ -z "$role" ]] || valid_role "$role";status_role "$role";;
+  logs) valid_role "$role";logs_role "$role";;
+  backup) backup_server;;
+  uninstall) valid_role "$role";uninstall_role "$role";;
+  self-update) update_self;;
+  version) note "Monitor 默认版本：$VERSION";;
+  help|-h|--help) usage;;
+  *) usage;exit 2;;
+ esac
+}
+main "$@"
