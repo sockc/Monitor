@@ -51,5 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum monitor-linux-* > SHA256SUMS)
+          HEAD_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
+          if [ "$HEAD_SHA" != "${{ github.sha }}" ]; then echo "Skipping outdated run"; exit 0; fi
           gh release view v0.5.0 --repo "${{ github.repository }}" >/dev/null 2>&1 && exit 0
           gh release create v0.5.0 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.5.0" --notes "Admin account bootstrap, bcrypt passwords, session cookies, login limits and password changes."
