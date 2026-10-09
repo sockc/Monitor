@@ -98,6 +98,7 @@ func main(){
   if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal||sample.SwapUsed>sample.SwapTotal||len(sample.CPUModel)>256{http.Error(w,"invalid sample",400);return}
   sample.Timestamp=time.Now().UTC()
   if !validNodeToken(r.Context(),s.db,sample.Name,strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer "),key){http.Error(w,"unauthorized",401);return}
+  if e:=recordTrafficIncrement(s.db,sample);e!=nil{log.Printf("traffic: %v",e)}
   if e:=recordSample(s.db,sample);e!=nil{log.Printf("db: %v",e);http.Error(w,"db write failed",500);return}
   s.Lock();previous,exists:=s.Nodes[sample.Name];node:=Node{Sample:sample,LastSeen:sample.Timestamp};if exists {dt:=sample.Timestamp.Sub(previous.LastSeen).Seconds();if dt>0&&dt<120&&sample.Uptime>=previous.Uptime {if sample.RxBytes>=previous.RxBytes{node.RxSpeed=float64(sample.RxBytes-previous.RxBytes)/dt};if sample.TxBytes>=previous.TxBytes{node.TxSpeed=float64(sample.TxBytes-previous.TxBytes)/dt};if sample.DiskReadBytes>=previous.DiskReadBytes{node.DiskReadSpeed=float64(sample.DiskReadBytes-previous.DiskReadBytes)/dt};if sample.DiskWriteBytes>=previous.DiskWriteBytes{node.DiskWriteSpeed=float64(sample.DiskWriteBytes-previous.DiskWriteBytes)/dt}}};s.Nodes[sample.Name]=node;s.Unlock()
   w.WriteHeader(204)
@@ -145,6 +146,11 @@ func main(){
  s.RLock();_,found:=s.Nodes[in.Name];s.RUnlock();if !found{http.Error(w,"unknown node",404);return}
  _,e:=s.db.ExecContext(r.Context(),"INSERT INTO node_metadata(name,display_name,group_name,notes) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET display_name=excluded.display_name,group_name=excluded.group_name,notes=excluded.notes",in.Name,in.DisplayName,in.Group,in.Notes)
  if e!=nil{http.Error(w,"database error",500);return};w.WriteHeader(204)
+ })
+ mux.HandleFunc("/api/v1/traffic-summary",func(w http.ResponseWriter,r *http.Request){
+ if !authorized(w,r){return}
+ sums,e:=periodTraffic(r.Context(),s.db);if e!=nil{http.Error(w,"database error",500);return}
+ w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(sums)
  })
  mux.HandleFunc("/api/v1/traffic",func(w http.ResponseWriter,r *http.Request){
  if !authorized(w,r){return};name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if !validNodeName(name){http.Error(w,"invalid name",400);return}
