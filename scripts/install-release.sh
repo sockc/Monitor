@@ -9,7 +9,7 @@ BASE="https://github.com/sockc/Monitor/releases/download/${VERSION}"
 TMP="$(mktemp -d)";trap 'rm -rf "$TMP"' EXIT
 curl -fLSs --retry 3 "$BASE/monitor-linux-$ARCH" -o "$TMP/monitor"
 curl -fLSs --retry 3 "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS"
-(cd "$TMP";grep "monitor-linux-$ARCH$" SHA256SUMS | sed "s@monitor-linux-$ARCH@monitor@" | sha256sum -c -)
+(cd "$TMP";grep "monitor-linux-$ARCH$" SHA256SUMS | sed -E "s@[^[:space:]]*monitor-linux-$ARCH@monitor@" | sha256sum -c -)
 install -m 0755 "$TMP/monitor" /usr/local/bin/monitor
 install -d -m 0700 /etc/monitor
 if [[ "$MODE" == server ]];then
