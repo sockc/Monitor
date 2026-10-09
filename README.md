@@ -49,3 +49,16 @@ See `deploy/systemd` for example units and `scripts/install.sh` for installation
 ## License
 
 MIT.
+
+
+## V0.2: history and node-scoped tokens
+
+Server now stores samples in SQLite at `/var/lib/monitor/monitor.db` (WAL mode, rolling 30-day history). Use the dashboard's history range and metric selectors for charts. Migration preserves the old snapshot if present, while the new SQLite database becomes the main persistent metric history.
+
+To create or rotate a **per-node** token, log into the admin dashboard first, then send:
+
+```sh
+curl -b cookies.txt -X POST https://monitor.example.com/api/v1/tokens -H 'Content-Type: application/json' -d '{"name":"server-1"}'
+```
+
+The endpoint requires the authenticated `monitor_session` cookie; tokens are only returned once. The legacy shared `MONITOR_AGENT_TOKEN` remains a fallback **only for nodes without an issued token**. After every node has its own token, disable the shared fallback in a future breaking change. Each token is scoped to its exact agent name; give the agent `-name server-1` when using its token. Ensure transport uses HTTPS.
