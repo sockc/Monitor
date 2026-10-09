@@ -6,12 +6,10 @@ import (
  "crypto/subtle"
  "database/sql"
  "encoding/hex"
- "errors"
  "fmt"
  "html/template"
  "net"
  "net/http"
- "strings"
  "sync"
  "time"
  "golang.org/x/crypto/bcrypt"
@@ -103,4 +101,3 @@ func (a *Auth) routes(mux *http.ServeMux){
   http.Redirect(w,r,"/login",303)
  })
 }
-var _=errors.New
