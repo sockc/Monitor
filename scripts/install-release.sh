@@ -4,7 +4,7 @@ if [[ "${EUID}" != 0 ]]; then echo "Please run as root" >&2;exit 1;fi
 MODE="${1:-}";if [[ "$MODE" != "server" && "$MODE" != "agent" ]];then echo "Usage: sudo bash install-release.sh server|agent" >&2;exit 1;fi
 ARCH="$(uname -m)"
 case "$ARCH" in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "Unsupported CPU $ARCH";exit 1;;esac
-VERSION="${MONITOR_VERSION:-v0.7.5}"
+VERSION="${MONITOR_VERSION:-v0.7.6}"
 BASE="https://github.com/sockc/Monitor/releases/download/${VERSION}"
 TMP="$(mktemp -d)";trap 'rm -rf "$TMP"' EXIT
 curl -fLSs --retry 3 "$BASE/monitor-linux-$ARCH" -o "$TMP/monitor"
