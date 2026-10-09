@@ -75,3 +75,8 @@ sudo bash install-monitor.sh server
 For an agent, set `MONITOR_SERVER` and `MONITOR_AGENT_TOKEN` in the environment before installation, or configure `/etc/monitor/agent.env` before restarting the service. The server installs to localhost-only port 8090; configure HTTPS reverse proxy separately.
 
 Server credentials: `sudo cat /etc/monitor/server.env`. Treat them as secrets. Use `journalctl -u monitor-server -f` / `journalctl -u monitor-agent -f` for diagnostics.
+
+
+## V0.4
+
+Node management provides rename, revoke, delete. Rename changes the identity and immediately revokes its old token; register and reconfigure the Agent using the newly named identity. Deletion removes historical samples and leaves a revoked token tombstone to block legacy shared-token fallback. Server state backup uses SQLite online VACUUM INTO; see scripts/backup.sh. Updates are available through scripts/upgrade.sh and verify published SHA256 checksums. Verify your deployment before enabling automatic scheduled updates.

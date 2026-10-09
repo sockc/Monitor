@@ -35,7 +35,7 @@ type Sample struct {
  Uptime uint64 `json:"uptime"`
  Timestamp time.Time `json:"timestamp"`
 }
-type Node struct { Sample; LastSeen time.Time `json:"last_seen"` }
+type Node struct { Sample; LastSeen time.Time `json:"last_seen"`; RxSpeed float64 `json:"rx_speed"`; TxSpeed float64 `json:"tx_speed"` }
 type Store struct { sync.RWMutex; Nodes map[string]Node `json:"nodes"`; file string; db *sql.DB }
 func (s *Store) save() error {
  s.RLock(); b,e:=json.MarshalIndent(s.Nodes,"","  ");s.RUnlock();if e!=nil{return e}
@@ -83,7 +83,7 @@ func main(){
   sample.Timestamp=time.Now().UTC()
   if !validNodeToken(r.Context(),s.db,sample.Name,strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer "),key){http.Error(w,"unauthorized",401);return}
   if e:=recordSample(s.db,sample);e!=nil{log.Printf("db: %v",e);http.Error(w,"db write failed",500);return}
-  s.Lock();s.Nodes[sample.Name]=Node{Sample:sample,LastSeen:sample.Timestamp};s.Unlock()
+  s.Lock();previous,exists:=s.Nodes[sample.Name];node:=Node{Sample:sample,LastSeen:sample.Timestamp};if exists {dt:=sample.Timestamp.Sub(previous.LastSeen).Seconds();if dt>0&&dt<120&&sample.Uptime>=previous.Uptime {if sample.RxBytes>=previous.RxBytes{node.RxSpeed=float64(sample.RxBytes-previous.RxBytes)/dt};if sample.TxBytes>=previous.TxBytes{node.TxSpeed=float64(sample.TxBytes-previous.TxBytes)/dt}}};s.Nodes[sample.Name]=node;s.Unlock()
   w.WriteHeader(204)
  })
  authorized:=func(w http.ResponseWriter,r *http.Request)bool{
@@ -116,6 +116,23 @@ func main(){
   if !authorized(w,r){return}; name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if len(name)==0||len(name)>100{http.Error(w,"invalid name",400);return}
   points,e:=queryHistory(r.Context(),s.db,name,hours);if e!=nil{http.Error(w,"database error",500);return};w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(points)
  })
+ mux.HandleFunc("/api/v1/node-manage",func(w http.ResponseWriter,r *http.Request){
+ if !authorized(w,r){return};if r.Method!="POST"{http.Error(w,"method",405);return};if !sameOrigin(r){http.Error(w,"origin",403);return}
+ r.Body=http.MaxBytesReader(w,r.Body,4096);var x struct{Action string `json:"action"`;Name string `json:"name"`;NewName string `json:"new_name"`};if json.NewDecoder(r.Body).Decode(&x)!=nil||!validNodeName(x.Name){http.Error(w,"invalid input",400);return}
+ s.Lock();defer s.Unlock();
+ switch x.Action {
+ case "delete":
+   if e:=removeNode(r.Context(),s.db,x.Name);e!=nil{http.Error(w,e.Error(),500);return};delete(s.Nodes,x.Name)
+ case "revoke":
+   if e:=revokeNode(r.Context(),s.db,x.Name);e!=nil{http.Error(w,e.Error(),500);return};delete(s.Nodes,x.Name)
+ case "rename":
+   if !validNodeName(x.NewName)||x.NewName==x.Name{http.Error(w,"invalid new name",400);return}
+   if _,ok:=s.Nodes[x.NewName];ok{http.Error(w,"name exists",409);return}
+   if e:=renameNode(r.Context(),s.db,x.Name,x.NewName);e!=nil{http.Error(w,e.Error(),500);return}
+   if n,ok:=s.Nodes[x.Name];ok{n.Name=x.NewName;s.Nodes[x.NewName]=n;delete(s.Nodes,x.Name)}
+ default:http.Error(w,"invalid action",400);return
+ };w.WriteHeader(204)
+ })
  mux.HandleFunc("/api/v1/traffic",func(w http.ResponseWriter,r *http.Request){
  if !authorized(w,r){return};name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if !validNodeName(name){http.Error(w,"invalid name",400);return}
  result,e:=queryTraffic(r.Context(),s.db,name,hours);if e!=nil{http.Error(w,"database error",500);return};w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(result)
@@ -123,7 +140,7 @@ func main(){
  mux.HandleFunc("/api/v1/nodes",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}
   s.RLock();out:=make([]map[string]any,0,len(s.Nodes))
-  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
+  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(out)
  })
  mux.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){

@@ -9,6 +9,7 @@ import (
  "encoding/json"
  "fmt"
  "os"
+ "net/http"
  "path/filepath"
  "sort"
  "time"
@@ -79,4 +80,26 @@ func queryTraffic(ctx context.Context,db *sql.DB,name string,hours int)(TrafficS
  if err=rows.Err();err!=nil{return out,err}
  keys:=make([]int64,0,len(buckets));for t:=range buckets{keys=append(keys,t)};sort.Slice(keys,func(i,j int)bool{return keys[i]<keys[j]});for _,t:=range keys{out.Buckets=append(out.Buckets,*buckets[t])}
  return out,nil
+}
+
+func sameOrigin(r *http.Request)bool{origin:=r.Header.Get("Origin");return origin==""||origin=="https://"+r.Host||origin=="http://"+r.Host}
+func revokeNode(ctx context.Context,db *sql.DB,name string)error{
+ // A tombstone blocks fallback authentication with the legacy shared token.
+ _,err:=db.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");return err
+}
+func removeNode(ctx context.Context,db *sql.DB,name string)error{
+ tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+ if _,err=tx.ExecContext(ctx,"DELETE FROM samples WHERE name=?",name);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");err!=nil{return err}
+ return tx.Commit()
+}
+func renameNode(ctx context.Context,db *sql.DB,old,new string)error{
+ // The old identity is revoked. A renamed node needs a new credential and agent configuration.
+ tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+ var exists int
+ if err=tx.QueryRowContext(ctx,"SELECT COUNT(*) FROM agent_tokens WHERE name=?",new).Scan(&exists);err!=nil{return err};if exists>0{return fmt.Errorf("target already registered")}
+ if _,err=tx.ExecContext(ctx,"UPDATE samples SET name=? WHERE name=?",new,old);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",old,"REVOKED");err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?)",new,"REVOKED");err!=nil{return err}
+ return tx.Commit()
 }
