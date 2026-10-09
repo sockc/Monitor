@@ -62,3 +62,16 @@ curl -b cookies.txt -X POST https://monitor.example.com/api/v1/tokens -H 'Conten
 ```
 
 The endpoint requires the authenticated `monitor_session` cookie; tokens are only returned once. The legacy shared `MONITOR_AGENT_TOKEN` remains a fallback **only for nodes without an issued token**. After every node has its own token, disable the shared fallback in a future breaking change. Each token is scoped to its exact agent name; give the agent `-name server-1` when using its token. Ensure transport uses HTTPS.
+
+## V0.2 installation from tagged GitHub Release
+
+After [the V0.2 release](https://github.com/sockc/Monitor/releases/tag/v0.2.0) is published, on Linux AMD64/ARM64:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sockc/Monitor/main/scripts/install-release.sh -o install-monitor.sh
+sudo bash install-monitor.sh server
+```
+
+For an agent, set `MONITOR_SERVER` and `MONITOR_AGENT_TOKEN` in the environment before installation, or configure `/etc/monitor/agent.env` before restarting the service. The server installs to localhost-only port 8090; configure HTTPS reverse proxy separately.
+
+Server credentials: `sudo cat /etc/monitor/server.env`. Treat them as secrets. Use `journalctl -u monitor-server -f` / `journalctl -u monitor-agent -f` for diagnostics.
