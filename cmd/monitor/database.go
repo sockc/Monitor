@@ -12,6 +12,7 @@ import (
  "net/http"
  "path/filepath"
  "sort"
+ "strings"
  "time"
 )
 type Point struct{Time int64 `json:"time"`;CPU float64 `json:"cpu"`; Memory float64 `json:"memory"`; Disk float64 `json:"disk"`}
@@ -25,6 +26,8 @@ func openDB(path string)(*sql.DB,error){
  "CREATE TABLE IF NOT EXISTS samples(name TEXT NOT NULL,ts INTEGER NOT NULL,cpu REAL NOT NULL,memory REAL NOT NULL,disk REAL NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(name,ts))",
  "CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts)",
  "CREATE TABLE IF NOT EXISTS traffic_daily(name TEXT NOT NULL, day TEXT NOT NULL, rx INTEGER NOT NULL DEFAULT 0, tx INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(name,day))",
+ "CREATE TABLE IF NOT EXISTS traffic_quarter(name TEXT NOT NULL, ts INTEGER NOT NULL, rx INTEGER NOT NULL DEFAULT 0, tx INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(name,ts))",
+ "CREATE TABLE IF NOT EXISTS node_limits(name TEXT PRIMARY KEY, timezone TEXT NOT NULL DEFAULT 'UTC', quota_gb REAL NOT NULL DEFAULT 0, expires_on TEXT NOT NULL DEFAULT '')",
  "CREATE TABLE IF NOT EXISTS agent_tokens(name TEXT PRIMARY KEY,hash TEXT NOT NULL)",
  "CREATE TABLE IF NOT EXISTS node_metadata(name TEXT PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '')",
  }{if _,err=db.Exec(q);err!=nil{db.Close();return nil,fmt.Errorf("schema: %w",err)}}
@@ -97,6 +100,8 @@ func removeNode(ctx context.Context,db *sql.DB,name string)error{
  if _,err=tx.ExecContext(ctx,"DELETE FROM samples WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_metadata WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_daily WHERE name=?",name);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_quarter WHERE name=?",name);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"DELETE FROM node_limits WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");err!=nil{return err}
  return tx.Commit()
 }
@@ -108,12 +113,50 @@ func renameNode(ctx context.Context,db *sql.DB,old,new string)error{
  if _,err=tx.ExecContext(ctx,"UPDATE samples SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE node_metadata SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE traffic_daily SET name=? WHERE name=?",new,old);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"UPDATE traffic_quarter SET name=? WHERE name=?",new,old);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"UPDATE node_limits SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",old,"REVOKED");err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?)",new,"REVOKED");err!=nil{return err}
  return tx.Commit()
 }
 
-type PeriodTraffic struct{TodayRX uint64 `json:"today_rx"`;TodayTX uint64 `json:"today_tx"`;MonthRX uint64 `json:"month_rx"`;MonthTX uint64 `json:"month_tx"`}
+// Traffic is retained in quarter-hour UTC buckets so per-node timezone changes
+// do not modify historical data. A bucket is attributed to its ending sample.
+type NodeLimits struct {
+ Name string `json:"name"`
+ Timezone string `json:"timezone"`
+ QuotaGB float64 `json:"quota_gb"`
+ ExpiresOn string `json:"expires_on"`
+}
+func validNodeLimits(v NodeLimits)bool{
+ if !validNodeName(v.Name)||v.QuotaGB<0||v.QuotaGB>1000000||v.QuotaGB!=v.QuotaGB{return false}
+ if len(v.Timezone)<1||len(v.Timezone)>64||strings.Contains(v.Timezone,"..")||strings.HasPrefix(v.Timezone,"/"){return false}
+ for _,c:=range v.Timezone{if !((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='/'||c=='_'||c=='+'||c=='-'){return false}}
+ if _,e:=time.LoadLocation(v.Timezone);e!=nil{return false}
+ if v.ExpiresOn!=""{d,e:=time.Parse("2006-01-02",v.ExpiresOn);if e!=nil||d.Format("2006-01-02")!=v.ExpiresOn{return false}}
+ return true
+}
+func setNodeLimits(ctx context.Context,db *sql.DB,v NodeLimits)error{
+ _,e:=db.ExecContext(ctx,"INSERT INTO node_limits(name,timezone,quota_gb,expires_on) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET timezone=excluded.timezone,quota_gb=excluded.quota_gb,expires_on=excluded.expires_on",v.Name,v.Timezone,v.QuotaGB,v.ExpiresOn)
+ return e
+}
+func readNodeLimits(ctx context.Context,db *sql.DB)(map[string]NodeLimits,error){
+ rows,e:=db.QueryContext(ctx,"SELECT name,timezone,quota_gb,expires_on FROM node_limits");if e!=nil{return nil,e};defer rows.Close()
+ out:=map[string]NodeLimits{}
+ for rows.Next(){var v NodeLimits;if e=rows.Scan(&v.Name,&v.Timezone,&v.QuotaGB,&v.ExpiresOn);e!=nil{return nil,e};out[v.Name]=v}
+ return out,rows.Err()
+}
+type PeriodTraffic struct{
+ TodayRX uint64 `json:"today_rx"`
+ TodayTX uint64 `json:"today_tx"`
+ MonthRX uint64 `json:"month_rx"`
+ MonthTX uint64 `json:"month_tx"`
+ Timezone string `json:"timezone"`
+ QuotaGB float64 `json:"quota_gb"`
+ ExpiresOn string `json:"expires_on"`
+ HasSamples bool `json:"has_samples"`
+ ObservedBuckets int `json:"observed_buckets"`
+}
 func recordTrafficIncrement(db *sql.DB,current Sample)error{
  var raw string;var ts int64
  e:=db.QueryRow("SELECT ts,payload FROM samples WHERE name=? ORDER BY ts DESC LIMIT 1",current.Name).Scan(&ts,&raw)
@@ -123,16 +166,35 @@ func recordTrafficIncrement(db *sql.DB,current Sample)error{
  if dt<=0||dt>600||current.Uptime<old.Uptime{return nil}
  if current.RxBytes<old.RxBytes||current.TxBytes<old.TxBytes{return nil}
  rx,tx:=current.RxBytes-old.RxBytes,current.TxBytes-old.TxBytes
- // Counter values are bytes; reject implausible spikes above ~25 Gbit/s.
+ // Reject implausible spikes (>25.6 Gbit/s sustained over the interval).
  if rx>uint64(dt)*3200000000||tx>uint64(dt)*3200000000{return nil}
+ txdb,e:=db.Begin();if e!=nil{return e};defer txdb.Rollback()
+ bucket:=current.Timestamp.Unix()/900*900
+ if _,e=txdb.Exec("INSERT INTO traffic_quarter(name,ts,rx,tx) VALUES(?,?,?,?) ON CONFLICT(name,ts) DO UPDATE SET rx=rx+excluded.rx,tx=tx+excluded.tx",current.Name,bucket,rx,tx);e!=nil{return e}
  day:=current.Timestamp.UTC().Format("2006-01-02")
- _,e=db.Exec("INSERT INTO traffic_daily(name,day,rx,tx) VALUES(?,?,?,?) ON CONFLICT(name,day) DO UPDATE SET rx=rx+excluded.rx,tx=tx+excluded.tx",current.Name,day,rx,tx)
- return e
+ if _,e=txdb.Exec("INSERT INTO traffic_daily(name,day,rx,tx) VALUES(?,?,?,?) ON CONFLICT(name,day) DO UPDATE SET rx=rx+excluded.rx,tx=tx+excluded.tx",current.Name,day,rx,tx);e!=nil{return e}
+ return txdb.Commit()
 }
 func periodTraffic(ctx context.Context,db *sql.DB)(map[string]PeriodTraffic,error){
- now:=time.Now().UTC();today:=now.Format("2006-01-02");month:=now.Format("2006-01")
- rows,e:=db.QueryContext(ctx,"SELECT name,day,rx,tx FROM traffic_daily WHERE day>=?",month+"-01");if e!=nil{return nil,e};defer rows.Close()
+ cfg,e:=readNodeLimits(ctx,db);if e!=nil{return nil,e}
+ rows,e:=db.QueryContext(ctx,"SELECT DISTINCT name FROM traffic_quarter");if e!=nil{return nil,e}
+ names:=map[string]bool{};for name:=range cfg{names[name]=true}
+ for rows.Next(){var name string;if e=rows.Scan(&name);e!=nil{rows.Close();return nil,e};names[name]=true}
+ if e=rows.Err();e!=nil{rows.Close();return nil,e};rows.Close()
  out:=map[string]PeriodTraffic{}
- for rows.Next(){var name,day string;var rx,tx uint64;if e=rows.Scan(&name,&day,&rx,&tx);e!=nil{return nil,e};v:=out[name];if len(day)>=7&&day[:7]==month{v.MonthRX+=rx;v.MonthTX+=tx};if day==today{v.TodayRX+=rx;v.TodayTX+=tx};out[name]=v}
- return out,rows.Err()
+ for name:=range names{
+  v:=cfg[name];if v.Timezone==""{v.Timezone="UTC"}
+  loc,e:=time.LoadLocation(v.Timezone);if e!=nil{loc=time.UTC;v.Timezone="UTC"}
+  local:=time.Now().In(loc)
+  startToday:=time.Date(local.Year(),local.Month(),local.Day(),0,0,0,0,loc).Unix()
+  startMonth:=time.Date(local.Year(),local.Month(),1,0,0,0,0,loc).Unix()
+  nextMonth:=time.Date(local.Year(),local.Month()+1,1,0,0,0,0,loc).Unix()
+  p:=PeriodTraffic{Timezone:v.Timezone,QuotaGB:v.QuotaGB,ExpiresOn:v.ExpiresOn}
+  var rx,tx uint64
+  e=db.QueryRowContext(ctx,"SELECT COALESCE(SUM(rx),0),COALESCE(SUM(tx),0),COUNT(*) FROM traffic_quarter WHERE name=? AND ts>=? AND ts<?",name,startMonth,nextMonth).Scan(&rx,&tx,&p.ObservedBuckets)
+  if e!=nil{return nil,e};p.MonthRX=rx;p.MonthTX=tx;p.HasSamples=p.ObservedBuckets>0
+  if e=db.QueryRowContext(ctx,"SELECT COALESCE(SUM(rx),0),COALESCE(SUM(tx),0) FROM traffic_quarter WHERE name=? AND ts>=? AND ts<?",name,startToday,nextMonth).Scan(&p.TodayRX,&p.TodayTX);e!=nil{return nil,e}
+  out[name]=p
+ }
+ return out,nil
 }
