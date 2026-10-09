@@ -28,6 +28,11 @@ type Sample struct {
  Hostname string `json:"hostname"`
  OS string `json:"os"`
  Arch string `json:"arch"`
+ CPUCores int `json:"cpu_cores,omitempty"`
+ MemoryTotal uint64 `json:"memory_total,omitempty"`
+ MemoryUsed uint64 `json:"memory_used,omitempty"`
+ DiskTotal uint64 `json:"disk_total,omitempty"`
+ DiskUsed uint64 `json:"disk_used,omitempty"`
  CPU float64 `json:"cpu"`
  Memory float64 `json:"memory"`
  Disk float64 `json:"disk"`
@@ -82,7 +87,7 @@ func main(){
   defer r.Body.Close()
   var sample Sample
   if e:=json.NewDecoder(r.Body).Decode(&sample);e!=nil{http.Error(w,"invalid JSON",400);return}
-  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100{http.Error(w,"invalid sample",400);return}
+  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal{http.Error(w,"invalid sample",400);return}
   sample.Timestamp=time.Now().UTC()
   if !validNodeToken(r.Context(),s.db,sample.Name,strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer "),key){http.Error(w,"unauthorized",401);return}
   if e:=recordSample(s.db,sample);e!=nil{log.Printf("db: %v",e);http.Error(w,"db write failed",500);return}
@@ -152,7 +157,7 @@ func main(){
   if !authorized(w,r){return}
   meta:=map[string][3]string{};rows,e:=s.db.QueryContext(r.Context(),"SELECT name,display_name,group_name,notes FROM node_metadata");if e!=nil{http.Error(w,"database error",500);return};for rows.Next(){var name,display,group,notes string;if rows.Scan(&name,&display,&group,&notes)==nil{meta[name]=[3]string{display,group,notes}}};rows.Close()
   s.RLock();out:=make([]map[string]any,0,len(s.Nodes))
-  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"notes":meta[n.Name][2],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
+  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"notes":meta[n.Name][2],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(out)
  })
  mux.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){
