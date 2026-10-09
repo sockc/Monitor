@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ "${EUID}" -eq 0 ]] || { echo "root required";exit 1; }
 MODE="${1:-}";[[ "$MODE" == server || "$MODE" == agent ]] || { echo "Usage: sudo bash upgrade.sh server|agent";exit 1; }
-VERSION="${MONITOR_VERSION:-v0.7.2}"
+VERSION="${MONITOR_VERSION:-v0.7.3}"
 ARCH="$(uname -m)";case "$ARCH" in x86_64)ARCH=amd64;;aarch64|arm64)ARCH=arm64;;*)exit 1;;esac
 ROOT="https://github.com/sockc/Monitor/releases/download/$VERSION"
 T="$(mktemp -d)";trap 'rm -rf "$T"' EXIT
@@ -23,11 +23,20 @@ HEALTH_OK=true
 if [[ "$MODE" == server ]]; then
  PORT="${MONITOR_HEALTH_PORT:-}"
  if [[ -z "$PORT" ]]; then
-  PORT="$(systemctl show monitor-server -p ExecStart --value | grep -oE -- '-listen (127[.]0[.]0[.]1:)?[0-9]+' | tail -1 | grep -oE '[0-9]+
+   PORT="$(systemctl cat monitor-server.service | sed -nE 's/.*-listen 127[.]0[.]0[.]1:([0-9]+).*/\1/p' | tail -1)"
+ fi
+ if [[ -z "$PORT" && -f /etc/monitor/server.env ]]; then
+   PORT="$(sed -nE 's/^MONITOR_LISTEN=127[.]0[.]0[.]1:([0-9]+)$/\1/p' /etc/monitor/server.env | tail -1)"
+ fi
+ PORT="${PORT:-8090}"
+ curl -fsS --max-time 3 "http://127.0.0.1:$PORT/healthz" >/dev/null || HEALTH_OK=false
+fi
+if ! systemctl is-active --quiet "monitor-$MODE.service" || [[ "$HEALTH_OK" != true ]]; then
  install -m 0755 "$T/previous" /usr/local/bin/monitor.rollback
  mv -f /usr/local/bin/monitor.rollback /usr/local/bin/monitor
  systemctl restart "monitor-$MODE.service"
- echo "Upgrade failed; binary rolled back" >&2;exit 1
+ echo "Upgrade failed; binary rolled back" >&2
+ exit 1
 fi
 echo "Updated to $VERSION"
  || true)"
