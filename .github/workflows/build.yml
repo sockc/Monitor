@@ -34,7 +34,9 @@ jobs:
               subprocess.run(["node", "--check", f.name], check=True)
           PY
       - name: Check deployment shell scripts
-        run: bash -n scripts/install-release.sh scripts/upgrade.sh scripts/backup.sh
+        run: |
+          bash -n scripts/monitorctl scripts/install-release.sh scripts/upgrade.sh scripts/backup.sh scripts/test-monitorctl.sh
+          bash scripts/test-monitorctl.sh
       - name: Test
         run: go test ./...
       - name: Build
@@ -61,16 +63,16 @@ jobs:
           pattern: monitor-linux-*
           path: dist
           merge-multiple: true
-      - name: Publish V0.9.2
+      - name: Publish V0.9.3
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum monitor-linux-* > SHA256SUMS)
           HEAD_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
           if [ "$HEAD_SHA" != "${{ github.sha }}" ]; then echo "Skipping outdated run"; exit 0; fi
-          if gh release view v0.9.2 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload v0.9.2 dist/monitor-linux-* dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
-            gh release edit v0.9.2 --target "${{ github.sha }}" --repo "${{ github.repository }}"
+          if gh release view v0.9.3 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v0.9.3 dist/monitor-linux-* dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
+            gh release edit v0.9.3 --target "${{ github.sha }}" --repo "${{ github.repository }}"
             exit 0
           fi
-          gh release create v0.9.2 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.2" --notes "UI redesign: categorized settings, tabbed node details, clearer alerts and compact server cards. Server-only upgrade; Agent protocol unchanged."
+          gh release create v0.9.3 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.3" --notes "Unified monitorctl manager, safe initial Server credential setup and lifecycle operations. Server and Agent binaries unchanged."
