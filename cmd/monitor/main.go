@@ -120,14 +120,27 @@ func main(){
  default:http.Error(w,"invalid action",400);return
  };w.WriteHeader(204)
  })
+ mux.HandleFunc("/api/v1/node-metadata",func(w http.ResponseWriter,r *http.Request){
+ if !authorized(w,r){return}
+ if r.Method!="POST"{http.Error(w,"method",405);return}
+ if !sameOrigin(r){http.Error(w,"origin",403);return}
+ r.Body=http.MaxBytesReader(w,r.Body,8192)
+ var in struct{Name string \`json:"name"\`; DisplayName string \`json:"display_name"\`; Group string \`json:"group"\`; Notes string \`json:"notes"\`}
+ if json.NewDecoder(r.Body).Decode(&in)!=nil||!validNodeName(in.Name)||len([]rune(in.DisplayName))>60||len([]rune(in.Group))>40||len([]rune(in.Notes))>500{http.Error(w,"invalid metadata",400);return}
+ in.DisplayName=strings.TrimSpace(in.DisplayName);in.Group=strings.TrimSpace(in.Group);in.Notes=strings.TrimSpace(in.Notes)
+ s.RLock();_,found:=s.Nodes[in.Name];s.RUnlock();if !found{http.Error(w,"unknown node",404);return}
+ _,e:=s.db.ExecContext(r.Context(),"INSERT INTO node_metadata(name,display_name,group_name,notes) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET display_name=excluded.display_name,group_name=excluded.group_name,notes=excluded.notes",in.Name,in.DisplayName,in.Group,in.Notes)
+ if e!=nil{http.Error(w,"database error",500);return};w.WriteHeader(204)
+ })
  mux.HandleFunc("/api/v1/traffic",func(w http.ResponseWriter,r *http.Request){
  if !authorized(w,r){return};name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if !validNodeName(name){http.Error(w,"invalid name",400);return}
  result,e:=queryTraffic(r.Context(),s.db,name,hours);if e!=nil{http.Error(w,"database error",500);return};w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(result)
  })
  mux.HandleFunc("/api/v1/nodes",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}
+  meta:=map[string][3]string{};rows,e:=s.db.QueryContext(r.Context(),"SELECT name,display_name,group_name,notes FROM node_metadata");if e!=nil{http.Error(w,"database error",500);return};for rows.Next(){var name,display,group,notes string;if rows.Scan(&name,&display,&group,&notes)==nil{meta[name]=[3]string{display,group,notes}}};rows.Close()
   s.RLock();out:=make([]map[string]any,0,len(s.Nodes))
-  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
+  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"notes":meta[n.Name][2],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(out)
  })
  mux.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){

@@ -25,6 +25,7 @@ func openDB(path string)(*sql.DB,error){
  "CREATE TABLE IF NOT EXISTS samples(name TEXT NOT NULL,ts INTEGER NOT NULL,cpu REAL NOT NULL,memory REAL NOT NULL,disk REAL NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(name,ts))",
  "CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts)",
  "CREATE TABLE IF NOT EXISTS agent_tokens(name TEXT PRIMARY KEY,hash TEXT NOT NULL)",
+ "CREATE TABLE IF NOT EXISTS node_metadata(name TEXT PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '')",
  }{if _,err=db.Exec(q);err!=nil{db.Close();return nil,fmt.Errorf("schema: %w",err)}}
  return db,nil
 }
@@ -93,6 +94,7 @@ func revokeNode(ctx context.Context,db *sql.DB,name string)error{
 func removeNode(ctx context.Context,db *sql.DB,name string)error{
  tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
  if _,err=tx.ExecContext(ctx,"DELETE FROM samples WHERE name=?",name);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"DELETE FROM node_metadata WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");err!=nil{return err}
  return tx.Commit()
 }
@@ -102,6 +104,7 @@ func renameNode(ctx context.Context,db *sql.DB,old,new string)error{
  var exists int
  if err=tx.QueryRowContext(ctx,"SELECT COUNT(*) FROM agent_tokens WHERE name=?",new).Scan(&exists);err!=nil{return err};if exists>0{return fmt.Errorf("target already registered")}
  if _,err=tx.ExecContext(ctx,"UPDATE samples SET name=? WHERE name=?",new,old);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"UPDATE node_metadata SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",old,"REVOKED");err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?)",new,"REVOKED");err!=nil{return err}
  return tx.Commit()
