@@ -1,3 +1,51 @@
 # Monitor
 
-Lightweight, container-free Linux server monitor. V0.1 development bootstrap.
+A lightweight, **Docker-free**, self-hosted Linux server monitor. V0.1 is an initial working MVP.
+
+**Stack:** Go standard library, systemd, embedded dashboard. No Docker, Node.js, Redis, or database service required on hosts.
+
+## Features
+
+- Linux CPU, memory, root filesystem, total network traffic, uptime
+- Multiple named agents; outbound HTTPS reporting every 5 seconds
+- Private browser dashboard with admin token login and 5-second auto-refresh
+- Server-side agent bearer-token authentication
+- Atomic JSON snapshot persistence (every 30 seconds); **history charts and SQLite are planned for future releases**
+- GitHub Actions builds for linux/amd64, linux/arm64; server and agent use the same binary with different mode flags
+
+## Run server
+
+Download the matching binary from a GitHub Actions build / release (when available), or build on a development machine:
+
+```sh
+go build -trimpath -ldflags="-s -w" -o monitor ./cmd/monitor
+MONITOR_AGENT_TOKEN="$(openssl rand -hex 32)"  # save this token for the agents
+MONITOR_ADMIN_TOKEN="$(openssl rand -hex 32)"  # save separately
+sudo mkdir -p /var/lib/monitor
+sudo env MONITOR_AGENT_TOKEN="$MONITOR_AGENT_TOKEN" MONITOR_ADMIN_TOKEN="$MONITOR_ADMIN_TOKEN" ./monitor -mode server -listen 127.0.0.1:8090
+```
+
+Place an HTTPS reverse proxy (Nginx/Caddy) in front of `127.0.0.1:8090`. Do not expose the HTTP port to the public internet. Open the proxy URL in your browser and log in using the admin token.
+
+## Run agent
+
+```sh
+MONITOR_AGENT_TOKEN="<the server's agent token>" ./monitor -mode agent -server https://monitor.example.com -name server-1
+```
+
+**Security:** Use a dedicated long random ingestion token and a different admin token. The MVP uses one shared ingestion token across agents: rotating it affects all agents. Cookies contain the admin token and must be protected by HTTPS. Use a private deployment first; per-node credentials, session hardening, encrypted history, and monitoring alerts are future work.
+
+## systemd
+
+See `deploy/systemd` for example units and `scripts/install.sh` for installation guidance. Review local secrets before enabling services.
+
+## Roadmap
+
+- V0.1: Agent reporting, live dashboard, simple persistence, release automation
+- V0.2: SQLite, history retention and charts, per-agent token provisioning
+- V0.3: HTTP/TCP checks and alerting
+- V0.4: safe signed upgrades, backups, detailed access control
+
+## License
+
+MIT.

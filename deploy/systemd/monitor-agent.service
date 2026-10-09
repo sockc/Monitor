@@ -1,0 +1,19 @@
+[Unit]
+Description=Monitor Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=monitor-agent
+Group=monitor-agent
+EnvironmentFile=/etc/monitor/agent.env
+ExecStart=/usr/local/bin/monitor -mode agent
+Restart=on-failure
+RestartSec=5
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
