@@ -24,6 +24,7 @@ func openDB(path string)(*sql.DB,error){
  "PRAGMA busy_timeout=5000",
  "CREATE TABLE IF NOT EXISTS samples(name TEXT NOT NULL,ts INTEGER NOT NULL,cpu REAL NOT NULL,memory REAL NOT NULL,disk REAL NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(name,ts))",
  "CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts)",
+ "CREATE TABLE IF NOT EXISTS traffic_daily(name TEXT NOT NULL, day TEXT NOT NULL, rx INTEGER NOT NULL DEFAULT 0, tx INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(name,day))",
  "CREATE TABLE IF NOT EXISTS agent_tokens(name TEXT PRIMARY KEY,hash TEXT NOT NULL)",
  "CREATE TABLE IF NOT EXISTS node_metadata(name TEXT PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '')",
  }{if _,err=db.Exec(q);err!=nil{db.Close();return nil,fmt.Errorf("schema: %w",err)}}
@@ -95,6 +96,7 @@ func removeNode(ctx context.Context,db *sql.DB,name string)error{
  tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
  if _,err=tx.ExecContext(ctx,"DELETE FROM samples WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_metadata WHERE name=?",name);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_daily WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");err!=nil{return err}
  return tx.Commit()
 }
@@ -105,7 +107,32 @@ func renameNode(ctx context.Context,db *sql.DB,old,new string)error{
  if err=tx.QueryRowContext(ctx,"SELECT COUNT(*) FROM agent_tokens WHERE name=?",new).Scan(&exists);err!=nil{return err};if exists>0{return fmt.Errorf("target already registered")}
  if _,err=tx.ExecContext(ctx,"UPDATE samples SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE node_metadata SET name=? WHERE name=?",new,old);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"UPDATE traffic_daily SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",old,"REVOKED");err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?)",new,"REVOKED");err!=nil{return err}
  return tx.Commit()
+}
+
+type PeriodTraffic struct{TodayRX uint64 `json:"today_rx"`;TodayTX uint64 `json:"today_tx"`;MonthRX uint64 `json:"month_rx"`;MonthTX uint64 `json:"month_tx"`}
+func recordTrafficIncrement(db *sql.DB,current Sample)error{
+ var raw string;var ts int64
+ e:=db.QueryRow("SELECT ts,payload FROM samples WHERE name=? ORDER BY ts DESC LIMIT 1",current.Name).Scan(&ts,&raw)
+ if e==sql.ErrNoRows{return nil};if e!=nil{return e}
+ var old Sample;if json.Unmarshal([]byte(raw),&old)!=nil{return nil}
+ dt:=current.Timestamp.Unix()-ts
+ if dt<=0||dt>600||current.Uptime<old.Uptime{return nil}
+ if current.RxBytes<old.RxBytes||current.TxBytes<old.TxBytes{return nil}
+ rx,tx:=current.RxBytes-old.RxBytes,current.TxBytes-old.TxBytes
+ // Counter values are bytes; reject implausible spikes above ~25 Gbit/s.
+ if rx>uint64(dt)*3200000000||tx>uint64(dt)*3200000000{return nil}
+ day:=current.Timestamp.UTC().Format("2006-01-02")
+ _,e=db.Exec("INSERT INTO traffic_daily(name,day,rx,tx) VALUES(?,?,?,?) ON CONFLICT(name,day) DO UPDATE SET rx=rx+excluded.rx,tx=tx+excluded.tx",current.Name,day,rx,tx)
+ return e
+}
+func periodTraffic(ctx context.Context,db *sql.DB)(map[string]PeriodTraffic,error){
+ now:=time.Now().UTC();today:=now.Format("2006-01-02");month:=now.Format("2006-01")
+ rows,e:=db.QueryContext(ctx,"SELECT name,day,rx,tx FROM traffic_daily WHERE day>=?",month+"-01");if e!=nil{return nil,e};defer rows.Close()
+ out:=map[string]PeriodTraffic{}
+ for rows.Next(){var name,day string;var rx,tx uint64;if e=rows.Scan(&name,&day,&rx,&tx);e!=nil{return nil,e};v:=out[name];if len(day)>=7&&day[:7]==month{v.MonthRX+=rx;v.MonthTX+=tx};if day==today{v.TodayRX+=rx;v.TodayTX+=tx};out[name]=v}
+ return out,rows.Err()
 }
