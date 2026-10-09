@@ -1,7 +1,7 @@
 package main
 
 import (
- "crypto/subtle"
+ 
  "encoding/json"
  "database/sql"
  "crypto/sha256"
@@ -64,11 +64,12 @@ func main(){
  if key==""{log.Fatal("set -token or MONITOR_AGENT_TOKEN")}
  if *mode=="agent" {runAgent(*server,*name,key,*interval);return}
  if *mode!="server"{log.Fatal("unknown mode")}
- admin:=os.Getenv("MONITOR_ADMIN_TOKEN");if len(admin)<24{log.Fatal("set MONITOR_ADMIN_TOKEN (at least 24 characters)")}
+ admin:=os.Getenv("MONITOR_ADMIN_TOKEN")
  s:=&Store{Nodes:map[string]Node{},file:*file}
  db,e:=openDB(*dbpath);if e!=nil{log.Fatal(e)};defer db.Close();s.db=db
  if b,e:=os.ReadFile(*file);e==nil{if e=json.Unmarshal(b,&s.Nodes);e!=nil{log.Printf("invalid data file: %v",e)}}
  if e:=restoreNodes(s);e!=nil{log.Printf("restore nodes: %v",e)}
+ auth,err:=newAuth(db,admin);if err!=nil{log.Fatal(err)}
  mux:=http.NewServeMux()
  mux.Handle("/static/",staticHandler())
  mux.HandleFunc("/healthz",func(w http.ResponseWriter,r *http.Request){w.Write([]byte("ok"))})
@@ -86,10 +87,8 @@ func main(){
   s.Lock();previous,exists:=s.Nodes[sample.Name];node:=Node{Sample:sample,LastSeen:sample.Timestamp};if exists {dt:=sample.Timestamp.Sub(previous.LastSeen).Seconds();if dt>0&&dt<120&&sample.Uptime>=previous.Uptime {if sample.RxBytes>=previous.RxBytes{node.RxSpeed=float64(sample.RxBytes-previous.RxBytes)/dt};if sample.TxBytes>=previous.TxBytes{node.TxSpeed=float64(sample.TxBytes-previous.TxBytes)/dt}}};s.Nodes[sample.Name]=node;s.Unlock()
   w.WriteHeader(204)
  })
- authorized:=func(w http.ResponseWriter,r *http.Request)bool{
-  c,e:=r.Cookie("monitor_session")
-  if e!=nil||!equal(c.Value,admin){http.Error(w,"unauthorized",401);return false};return true
- }
+ authorized:=auth.require
+ auth.routes(mux)
  mux.HandleFunc("/api/v1/tokens",func(w http.ResponseWriter,r *http.Request){
  if !authorized(w,r){return};if r.Method!="POST"{http.Error(w,"method",405);return}
   if r.Header.Get("Origin")!="" && r.Header.Get("Origin")!="https://"+r.Host && r.Header.Get("Origin")!="http://"+r.Host{http.Error(w,"origin",403);return}
@@ -98,19 +97,6 @@ func main(){
  if _,e:=s.db.ExecContext(r.Context(),"INSERT INTO agent_tokens(name, hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",req.Name,hex.EncodeToString(hash[:]));e!=nil{http.Error(w,"db failed",500);return}
  s.Lock();if _,exists:=s.Nodes[req.Name];!exists{s.Nodes[req.Name]=Node{Sample:Sample{Name:req.Name}}};s.Unlock()
  w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(map[string]string{"name":req.Name,"token":secret})
- })
- mux.HandleFunc("/login",func(w http.ResponseWriter,r *http.Request){
-  if r.Method=="GET"{w.Header().Set("Content-Type","text/html; charset=utf-8");w.Write([]byte(loginHTML));return}
-  if r.Method!="POST"{http.Error(w,"method",405);return}
-  r.Body=http.MaxBytesReader(w,r.Body,4096)
-  if e:=r.ParseForm();e!=nil||!equal(r.FormValue("token"),admin){http.Error(w,"invalid login",401);return}
-  http.SetCookie(w,&http.Cookie{Name:"monitor_session",Value:admin,Path:"/",HttpOnly:true,Secure:r.TLS!=nil||r.Header.Get("X-Forwarded-Proto")=="https",SameSite:http.SameSiteStrictMode})
-  http.Redirect(w,r,"/",303)
- })
- mux.HandleFunc("/logout",func(w http.ResponseWriter,r *http.Request){
-  if r.Method!="POST"||!authorized(w,r){return}
-  http.SetCookie(w,&http.Cookie{Name:"monitor_session",Path:"/",MaxAge:-1,HttpOnly:true,SameSite:http.SameSiteStrictMode})
-  http.Redirect(w,r,"/login",303)
  })
  mux.HandleFunc("/api/v1/history",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}; name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if len(name)==0||len(name)>100{http.Error(w,"invalid name",400);return}
@@ -145,7 +131,7 @@ func main(){
  })
  mux.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){
   if r.URL.Path!="/"{http.NotFound(w,r);return}
-  if !authorized(w,r){return}
+  if !authorized(w,r){http.Redirect(w,r,"/login",303);return}
   w.Header().Set("Content-Type","text/html; charset=utf-8")
   w.Header().Set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
   dashboard.Execute(w,nil)

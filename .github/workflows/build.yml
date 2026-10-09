@@ -46,10 +46,10 @@ jobs:
           pattern: monitor-linux-*
           path: dist
           merge-multiple: true
-      - name: Publish V0.4.0
+      - name: Publish V0.5.0
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum monitor-linux-* > SHA256SUMS)
-          gh release view v0.4.0 --repo "${{ github.repository }}" >/dev/null 2>&1 && exit 0
-          gh release create v0.4.0 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.4.0" --notes "Node maintenance, live transfer speeds, SQLite backup and native upgrade."
+          gh release view v0.5.0 --repo "${{ github.repository }}" >/dev/null 2>&1 && exit 0
+          gh release create v0.5.0 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.5.0" --notes "Admin account bootstrap, bcrypt passwords, session cookies, login limits and password changes."
