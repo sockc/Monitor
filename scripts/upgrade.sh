@@ -39,16 +39,3 @@ if ! systemctl is-active --quiet "monitor-$MODE.service" || [[ "$HEALTH_OK" != t
  exit 1
 fi
 echo "Updated to $VERSION"
- || true)"
- fi
- if [[ -z "$PORT" && -f /etc/monitor/server.env ]];then PORT="$(sed -nE 's/^MONITOR_LISTEN=127[.]0[.]0[.]1:([0-9]+)$/\1/p' /etc/monitor/server.env | tail -1)";fi
- PORT="${PORT:-8090}"
- curl -fsS --max-time 3 "http://127.0.0.1:$PORT/healthz" >/dev/null || HEALTH_OK=false
-fi
-if ! systemctl is-active --quiet "monitor-$MODE.service" || [[ "$HEALTH_OK" != true ]];then
- install -m 0755 "$T/previous" /usr/local/bin/monitor.rollback
- mv -f /usr/local/bin/monitor.rollback /usr/local/bin/monitor
- systemctl restart "monitor-$MODE.service"
- echo "Upgrade failed; binary rolled back" >&2;exit 1
-fi
-echo "Updated to $VERSION"
