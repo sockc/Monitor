@@ -9,6 +9,7 @@ import (
  "encoding/hex"
  "crypto/rand"
  _ "modernc.org/sqlite"
+ _ "time/tzdata"
  "flag"
  "fmt"
  "html/template"
@@ -23,11 +24,13 @@ import (
  "time"
 )
 
+const monitorVersion="v0.9.1"
 type Sample struct {
  Name string `json:"name"`
  Hostname string `json:"hostname"`
  OS string `json:"os"`
  Arch string `json:"arch"`
+ AgentVersion string `json:"agent_version,omitempty"`
  CPUCores int `json:"cpu_cores,omitempty"`
  CPUModel string `json:"cpu_model,omitempty"`
  Load1 float64 `json:"load1,omitempty"`
@@ -95,7 +98,7 @@ func main(){
   defer r.Body.Close()
   var sample Sample
   if e:=json.NewDecoder(r.Body).Decode(&sample);e!=nil{http.Error(w,"invalid JSON",400);return}
-  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal||sample.SwapUsed>sample.SwapTotal||len(sample.CPUModel)>256{http.Error(w,"invalid sample",400);return}
+  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal||sample.SwapUsed>sample.SwapTotal||len(sample.CPUModel)>256||len(sample.AgentVersion)>32{http.Error(w,"invalid sample",400);return}
   sample.Timestamp=time.Now().UTC()
   if !validNodeToken(r.Context(),s.db,sample.Name,strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer "),key){http.Error(w,"unauthorized",401);return}
   if e:=recordTrafficIncrement(s.db,sample);e!=nil{log.Printf("traffic: %v",e)}
@@ -147,6 +150,20 @@ func main(){
  _,e:=s.db.ExecContext(r.Context(),"INSERT INTO node_metadata(name,display_name,group_name,notes) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET display_name=excluded.display_name,group_name=excluded.group_name,notes=excluded.notes",in.Name,in.DisplayName,in.Group,in.Notes)
  if e!=nil{http.Error(w,"database error",500);return};w.WriteHeader(204)
  })
+ mux.HandleFunc("/api/v1/node-limits",func(w http.ResponseWriter,r *http.Request){
+  if !authorized(w,r){return}
+  if r.Method=="GET"{
+   settings,e:=readNodeLimits(r.Context(),s.db);if e!=nil{http.Error(w,"database error",500);return}
+   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(settings);return
+  }
+  if r.Method!="POST"||!sameOrigin(r){http.Error(w,"invalid method or origin",403);return}
+  r.Body=http.MaxBytesReader(w,r.Body,4096);defer r.Body.Close()
+  var v NodeLimits
+  if json.NewDecoder(r.Body).Decode(&v)!=nil||!validNodeLimits(v){http.Error(w,"invalid timezone, quota or expiry",400);return}
+  s.RLock();_,ok:=s.Nodes[v.Name];s.RUnlock();if !ok{http.Error(w,"unknown node",404);return}
+  if e:=setNodeLimits(r.Context(),s.db,v);e!=nil{http.Error(w,"database error",500);return}
+  w.WriteHeader(http.StatusNoContent)
+ })
  mux.HandleFunc("/api/v1/traffic-summary",func(w http.ResponseWriter,r *http.Request){
  if !authorized(w,r){return}
  sums,e:=periodTraffic(r.Context(),s.db);if e!=nil{http.Error(w,"database error",500);return}
@@ -171,7 +188,7 @@ func main(){
   if !authorized(w,r){return}
   meta:=map[string][3]string{};rows,e:=s.db.QueryContext(r.Context(),"SELECT name,display_name,group_name,notes FROM node_metadata");if e!=nil{http.Error(w,"database error",500);return};for rows.Next(){var name,display,group,notes string;if rows.Scan(&name,&display,&group,&notes)==nil{meta[name]=[3]string{display,group,notes}}};rows.Close()
   s.RLock();out:=make([]map[string]any,0,len(s.Nodes))
-  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"notes":meta[n.Name][2],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"cpu_model":n.CPUModel,"load1":n.Load1,"load5":n.Load5,"load15":n.Load15,"swap_total":n.SwapTotal,"swap_used":n.SwapUsed,"disk_read_speed":n.DiskReadSpeed,"disk_write_speed":n.DiskWriteSpeed,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
+  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"notes":meta[n.Name][2],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"cpu_model":n.CPUModel,"agent_version":n.AgentVersion,"load1":n.Load1,"load5":n.Load5,"load15":n.Load15,"swap_total":n.SwapTotal,"swap_used":n.SwapUsed,"disk_read_speed":n.DiskReadSpeed,"disk_write_speed":n.DiskWriteSpeed,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(out)
  })
  mux.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){
