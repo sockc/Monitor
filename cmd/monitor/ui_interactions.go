@@ -23,6 +23,14 @@ const uiInteractionCSS=`
 .event-filters #alert-summary{font-size:11px;margin-left:auto}
 .node-info-backdrop[hidden]{display:none!important}
 .node-info-backdrop{position:fixed;inset:0;background:#07121f8f;z-index:9998;backdrop-filter:blur(1.5px)}
+
+:is(html[data-theme=glass],html[data-theme=light]) .node-picker{background:#fafcff;color:#2e425e;border-color:#c5d3e6}
+:is(html[data-theme=glass],html[data-theme=light]) .node-picker #history-node-query,
+:is(html[data-theme=glass],html[data-theme=light]) .node-picker .node-picker-item{background:#f4f8ff;color:#2e425e;border-color:#c5d3e6}
+:is(html[data-theme=glass],html[data-theme=light]) .node-picker .node-picker-item[aria-pressed=true]{background:#dbeafa;border-color:#5796cd}
+:is(html[data-theme=glass],html[data-theme=light]) .chart-readout{background:#eef4fc;color:#35506d;border-color:#c6d6e9}
+:is(html[data-theme=glass],html[data-theme=light]) .event-filters button{color:#3e5670;border-color:#b2c7db}
+:is(html[data-theme=glass],html[data-theme=light]) .event-filters button.selected{color:#fff;background:#37699b}
 @media(max-width:779px){
  #view-statistics .stat-filters{display:grid!important;grid-template-columns:minmax(0,1.2fr) minmax(0,.75fr) minmax(0,.75fr)!important;gap:6px!important;align-items:center}
  #view-statistics #history-node-pick{grid-column:1!important;min-width:0!important;min-height:39px!important;width:100%;max-width:none;padding:8px!important;font-size:12px;text-align:left}
