@@ -53,26 +53,57 @@ jobs:
           name: monitor-linux-${{ matrix.arch }}
           path: dist/
 
+  build-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve dependencies
+        run: go mod tidy
+      - name: Validate Windows PowerShell installer
+        shell: pwsh
+        run: |
+          $tok=$null
+          $errList=$null
+          $ast=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/install-windows.ps1'),[ref]$tok,[ref]$errList)
+          if ($errList.Count -gt 0) { $errList | ForEach-Object { Write-Error $_ }; exit 1 }
+      - name: Cross-compile Windows x64 Agent
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o dist/monitor-windows-amd64.exe ./cmd/monitor
+          file dist/monitor-windows-amd64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monitor-windows-amd64
+          path: dist/
+
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build
+    needs: [build, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: monitor-linux-*
+          pattern: monitor-*
           path: dist
           merge-multiple: true
-      - name: Publish V0.9.15
+      - name: Publish V0.9.16
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          (cd dist && sha256sum monitor-linux-* > SHA256SUMS)
+          (cd dist && sha256sum monitor-linux-* monitor-windows-amd64.exe > SHA256SUMS)
           HEAD_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
           if [ "$HEAD_SHA" != "${{ github.sha }}" ]; then echo "Skipping outdated run"; exit 0; fi
-          if gh release view v0.9.15 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload v0.9.15 dist/monitor-linux-* dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
-            gh release edit v0.9.15 --target "${{ github.sha }}" --repo "${{ github.repository }}"
+          if gh release view v0.9.16 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v0.9.16 dist/monitor-linux-* dist/monitor-windows-amd64.exe dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
+            gh release edit v0.9.16 --target "${{ github.sha }}" --repo "${{ github.repository }}"
             exit 0
           fi
-          gh release create v0.9.15 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.15" --notes "Safer concurrent refresh, persistent overview browsing state, clear node-edit save feedback and modular CSS with mobile polish. Server-only upgrade."
+          gh release create v0.9.16 dist/monitor-linux-* dist/monitor-windows-amd64.exe dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.16" --notes "Windows AMD64 Agent with native CPU/memory/disk metrics, network totals, SCM service installation and SHA256-verified PowerShell installer. Linux Server remains backward-compatible."
