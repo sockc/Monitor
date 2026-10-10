@@ -33,6 +33,7 @@ type Sample struct {
  AgentVersion string `json:"agent_version,omitempty"`
  PublicIP string `json:"public_ip,omitempty"`
  AutoLocation string `json:"auto_location,omitempty"`
+ CountryCode string `json:"country_code,omitempty"`
  CPUCores int `json:"cpu_cores,omitempty"`
  CPUModel string `json:"cpu_model,omitempty"`
  Load1 float64 `json:"load1,omitempty"`
@@ -100,13 +101,13 @@ func main(){
   defer r.Body.Close()
   var sample Sample
   if e:=json.NewDecoder(r.Body).Decode(&sample);e!=nil{http.Error(w,"invalid JSON",400);return}
-  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal||sample.SwapUsed>sample.SwapTotal||len(sample.CPUModel)>256||len(sample.AgentVersion)>32||len([]rune(sample.AutoLocation))>140||len(sample.PublicIP)>45{http.Error(w,"invalid sample",400);return}
+  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal||sample.SwapUsed>sample.SwapTotal||len(sample.CPUModel)>256||len(sample.AgentVersion)>32||len([]rune(sample.AutoLocation))>140||len(sample.PublicIP)>45||len(sample.CountryCode)>2{http.Error(w,"invalid sample",400);return}
   sample.Timestamp=time.Now().UTC()
   if !validNodeToken(r.Context(),s.db,sample.Name,strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer "),key){http.Error(w,"unauthorized",401);return}
   // Only store IP geolocation supplied by the authenticated Agent. A
   // Cloudflare/Nginx reverse proxy would otherwise appear as the node.
   if sample.PublicIP!=""&&sample.AutoLocation!=""&&validPublicIP(sample.PublicIP){
-   if _,e:=s.db.ExecContext(r.Context(),"INSERT INTO node_geo(name,public_ip,auto_location,updated_at) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET public_ip=excluded.public_ip,auto_location=excluded.auto_location,updated_at=excluded.updated_at WHERE public_ip<>excluded.public_ip OR auto_location<>excluded.auto_location",sample.Name,sample.PublicIP,sample.AutoLocation,sample.Timestamp.Unix());e!=nil{log.Printf("geo save: %v",e)}
+   if _,e:=s.db.ExecContext(r.Context(),"INSERT INTO node_geo(name,public_ip,auto_location,country_code,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET public_ip=excluded.public_ip,auto_location=excluded.auto_location,country_code=excluded.country_code,updated_at=excluded.updated_at WHERE public_ip<>excluded.public_ip OR auto_location<>excluded.auto_location OR country_code<>excluded.country_code",sample.Name,sample.PublicIP,sample.AutoLocation,sample.CountryCode,sample.Timestamp.Unix());e!=nil{log.Printf("geo save: %v",e)}
   }
 
   if e:=recordTrafficIncrement(s.db,sample);e!=nil{log.Printf("traffic: %v",e)}
@@ -150,13 +151,46 @@ func main(){
  if !authorized(w,r){return}
  if r.Method!="POST"{http.Error(w,"method",405);return}
  if !sameOrigin(r){http.Error(w,"origin",403);return}
- r.Body=http.MaxBytesReader(w,r.Body,8192)
- var in struct{Name string `json:"name"`; DisplayName string `json:"display_name"`; Group string `json:"group"`; Location string `json:"location"`; Notes string `json:"notes"`}
- if json.NewDecoder(r.Body).Decode(&in)!=nil||!validNodeName(in.Name)||len([]rune(in.DisplayName))>60||len([]rune(in.Group))>40||len([]rune(in.Location))>80||len([]rune(in.Notes))>500{http.Error(w,"invalid metadata",400);return}
+ r.Body=http.MaxBytesReader(w,r.Body,8192);defer r.Body.Close()
+ var in struct{
+  Name string `json:"name"`
+  DisplayName string `json:"display_name"`
+  Group string `json:"group"`
+  Location string `json:"location"`
+  Notes string `json:"notes"`
+  Profile *NodeProfile `json:"profile"`
+  QuotaGB *float64 `json:"quota_gb"`
+  ExpiresOn *string `json:"expires_on"`
+ }
+ if json.NewDecoder(r.Body).Decode(&in)!=nil||!validNodeName(in.Name)||len([]rune(in.DisplayName))>60||len([]rune(in.Group))>40||len([]rune(in.Location))>80||len([]rune(in.Notes))>500{
+  http.Error(w,"invalid metadata",400);return
+ }
  in.DisplayName=strings.TrimSpace(in.DisplayName);in.Group=strings.TrimSpace(in.Group);in.Location=strings.TrimSpace(in.Location);in.Notes=strings.TrimSpace(in.Notes)
+ if in.Profile!=nil{
+  in.Profile.Provider=strings.TrimSpace(in.Profile.Provider)
+  in.Profile.CountryCode=strings.ToUpper(strings.TrimSpace(in.Profile.CountryCode))
+  if !validNodeProfile(*in.Profile){http.Error(w,"invalid server plan",400);return}
+ }
+ if (in.QuotaGB==nil)!=(in.ExpiresOn==nil){http.Error(w,"quota and expiry must be supplied together",400);return}
  s.RLock();_,found:=s.Nodes[in.Name];s.RUnlock();if !found{http.Error(w,"unknown node",404);return}
- _,e:=s.db.ExecContext(r.Context(),"INSERT INTO node_metadata(name,display_name,group_name,location,notes) VALUES(?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET display_name=excluded.display_name,group_name=excluded.group_name,location=excluded.location,notes=excluded.notes",in.Name,in.DisplayName,in.Group,in.Location,in.Notes)
- if e!=nil{http.Error(w,"database error",500);return};w.WriteHeader(204)
+ tx,e:=s.db.BeginTx(r.Context(),nil);if e!=nil{http.Error(w,"database error",500);return};defer tx.Rollback()
+ if _,e=tx.ExecContext(r.Context(),"INSERT INTO node_metadata(name,display_name,group_name,location,notes) VALUES(?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET display_name=excluded.display_name,group_name=excluded.group_name,location=excluded.location,notes=excluded.notes",in.Name,in.DisplayName,in.Group,in.Location,in.Notes);e!=nil{http.Error(w,"database error",500);return}
+ if in.Profile!=nil{
+  p:=in.Profile
+  _,e=tx.ExecContext(r.Context(),"INSERT INTO node_profile(name,provider,country_code,price_value,price_currency,billing_cycle,port_mbps,has_ipv4,has_ipv6) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET provider=excluded.provider,country_code=excluded.country_code,price_value=excluded.price_value,price_currency=excluded.price_currency,billing_cycle=excluded.billing_cycle,port_mbps=excluded.port_mbps,has_ipv4=excluded.has_ipv4,has_ipv6=excluded.has_ipv6",in.Name,p.Provider,p.CountryCode,p.PriceValue,p.PriceCurrency,p.BillingCycle,p.PortMbps,p.HasIPv4,p.HasIPv6)
+  if e!=nil{http.Error(w,"database error",500);return}
+ }
+ if in.QuotaGB!=nil{
+  var zone string
+  e=tx.QueryRowContext(r.Context(),"SELECT timezone FROM node_limits WHERE name=?",in.Name).Scan(&zone)
+  if e==sql.ErrNoRows{zone="UTC"}else if e!=nil{http.Error(w,"database error",500);return}
+  limits:=NodeLimits{Name:in.Name,Timezone:zone,QuotaGB:*in.QuotaGB,ExpiresOn:*in.ExpiresOn}
+  if !validNodeLimits(limits){http.Error(w,"invalid quota or expiry",400);return}
+  _,e=tx.ExecContext(r.Context(),"INSERT INTO node_limits(name,timezone,quota_gb,expires_on) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET quota_gb=excluded.quota_gb,expires_on=excluded.expires_on",in.Name,zone,*in.QuotaGB,*in.ExpiresOn)
+  if e!=nil{http.Error(w,"database error",500);return}
+ }
+ if e=tx.Commit();e!=nil{http.Error(w,"database error",500);return}
+ w.WriteHeader(http.StatusNoContent)
  })
  mux.HandleFunc("/api/v1/node-limits",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}
@@ -194,10 +228,11 @@ func main(){
  })
  mux.HandleFunc("/api/v1/nodes",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}
-  geo:=map[string][2]string{};gr,e:=s.db.QueryContext(r.Context(),"SELECT name,public_ip,auto_location FROM node_geo");if e!=nil{http.Error(w,"database error",500);return};for gr.Next(){var name,ip,location string;if gr.Scan(&name,&ip,&location)==nil{geo[name]=[2]string{ip,location}}};if e=gr.Err();e!=nil{gr.Close();http.Error(w,"database error",500);return};gr.Close()
+  geo:=map[string][3]string{};gr,e:=s.db.QueryContext(r.Context(),"SELECT name,public_ip,auto_location,country_code FROM node_geo");if e!=nil{http.Error(w,"database error",500);return};for gr.Next(){var name,ip,location,country string;if gr.Scan(&name,&ip,&location,&country)==nil{geo[name]=[3]string{ip,location,country}}};if e=gr.Err();e!=nil{gr.Close();http.Error(w,"database error",500);return};gr.Close()
   meta:=map[string][4]string{};rows,e:=s.db.QueryContext(r.Context(),"SELECT name,display_name,group_name,location,notes FROM node_metadata");if e!=nil{http.Error(w,"database error",500);return};for rows.Next(){var name,display,group,location,notes string;if rows.Scan(&name,&display,&group,&location,&notes)==nil{meta[name]=[4]string{display,group,location,notes}}};if e=rows.Err();e!=nil{rows.Close();http.Error(w,"database error",500);return};rows.Close()
+  profiles,e:=readNodeProfiles(r.Context(),s.db);if e!=nil{http.Error(w,"database error",500);return}
   s.RLock();out:=make([]map[string]any,0,len(s.Nodes))
-  for _,n:=range s.Nodes{out=append(out,map[string]any{"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"location":func()string{if meta[n.Name][2]!=""{return meta[n.Name][2]};return geo[n.Name][1]}(),"manual_location":meta[n.Name][2],"auto_location":geo[n.Name][1],"public_ip":geo[n.Name][0],"location_source":func()string{if meta[n.Name][2]!=""{return "manual"};if geo[n.Name][1]!=""{return "ip"};return "unknown"}(),"notes":meta[n.Name][3],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"cpu_model":n.CPUModel,"agent_version":n.AgentVersion,"load1":n.Load1,"load5":n.Load5,"load15":n.Load15,"swap_total":n.SwapTotal,"swap_used":n.SwapUsed,"disk_read_speed":n.DiskReadSpeed,"disk_write_speed":n.DiskWriteSpeed,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
+  for _,n:=range s.Nodes{p,exists:=profiles[n.Name];if !exists{p=defaultNodeProfile()};country:=p.CountryCode;if country==""{country=geo[n.Name][2]};out=append(out,map[string]any{"profile":p,"country_code":country,"name":n.Name,"display_name":meta[n.Name][0],"group":meta[n.Name][1],"location":func()string{if meta[n.Name][2]!=""{return meta[n.Name][2]};return geo[n.Name][1]}(),"manual_location":meta[n.Name][2],"auto_location":geo[n.Name][1],"public_ip":geo[n.Name][0],"location_source":func()string{if meta[n.Name][2]!=""{return "manual"};if geo[n.Name][1]!=""{return "ip"};return "unknown"}(),"notes":meta[n.Name][3],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"cpu_model":n.CPUModel,"agent_version":n.AgentVersion,"load1":n.Load1,"load5":n.Load5,"load15":n.Load15,"swap_total":n.SwapTotal,"swap_used":n.SwapUsed,"disk_read_speed":n.DiskReadSpeed,"disk_write_speed":n.DiskWriteSpeed,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(out)
  })
  mux.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){
