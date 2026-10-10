@@ -7,10 +7,11 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div><span class="summary-icon">▣</span><div><small>总节点</small><strong id="total">—</strong></div></div>
   <div><span class="summary-icon">●</span><div><small>在线节点</small><strong id="online">—</strong></div></div>
   <div><span class="summary-icon">◌</span><div><small>离线节点</small><strong id="offline">—</strong></div></div>
-  <div><span class="summary-icon">◇</span><div><small>当前告警</small><strong id="alert-count">—</strong></div></div>
+  <div><span class="summary-icon">◇</span><div><small>当前告警</small><strong id="alert-count">—</strong><button type="button" id="overview-alert-filter" class="alert-filter-shortcut" title="筛选有异常的服务器">查看</button></div></div>
  </div>
  <div class="dashboard-toolbar">
   <div class="dashboard-toolbar-head"><div class="toolbar-label"><h3>服务器列表</h3><span id="node-visible-count" class="muted">—</span></div><button type="button" class="primary-btn" id="add-node">＋ 添加</button></div>
+  <div class="overview-quick-filters" role="group" aria-label="节点快捷筛选"><button type="button" class="selected" data-node-filter="all" aria-pressed="true">全部</button><button type="button" data-node-filter="favorite" aria-pressed="false">★ 收藏</button><button type="button" data-node-filter="alert" aria-pressed="false">异常</button></div>
   <div class="dashboard-filters" role="group" aria-label="搜索、筛选与显示方式">
    <div class="filter-search"><input id="node-search" type="search" aria-label="搜索服务器" placeholder="搜索名称、地区、分组"></div>
    <div class="filter-selects"><select id="node-group" aria-label="筛选服务器分组"><option value="">全部分组</option></select></div>
@@ -51,8 +52,9 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="settings-content">
    <div class="settings-pane" id="settings-nodes" role="tabpanel">
     <div class="settings-pane-heading"><div><h2>节点管理</h2><p class="muted">维护名称、分组和备注，或生成新的 Agent 安装命令</p></div><button type="button" id="show-add-node" class="primary-btn">＋ 添加节点</button></div>
-    <section class="settings-card"><div class="settings-card-heading"><h3>编辑节点</h3><p class="muted">所有节点按行显示。直接修改名称、分组、位置和显示顺序并保存；顺序 1 最靠前，0 使用默认排序，不影响节点 ID 或令牌</p></div>
+    <section class="settings-card"><div class="settings-card-heading"><h3>编辑节点</h3><p class="muted">可拖动排序（电脑）或点击上下箭头（手机），自动同步；编辑名称、分组等资料仍需单独保存。</p></div>
      <div class="node-editor-head" aria-hidden="true"><span>节点 / 状态</span><span>首页显示名称</span><span>分组</span><span>位置（可留空）</span><span>顺序</span><span>操作</span></div>
+     <p class="field-hint">拖动左侧手柄调整排列，或使用 ↑ ↓。排序会同步到所有设备。</p><div id="node-order-status" class="form-feedback" role="status"></div>
      <div id="node-editor-list" class="node-editor-list"><p class="field-hint">正在读取节点…</p></div>
     </section>
     <section class="settings-card" id="metadata-advanced" hidden><div class="settings-card-heading"><div><h3>完整配置</h3><p class="muted">修改套餐、国旗、线路和到期信息；这些设置不会影响 Agent 在线</p></div><button type="button" id="metadata-advanced-close" class="subtle-btn">收起</button></div>
@@ -124,6 +126,12 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
        <button class="theme-choice" type="button" data-theme-choice="light"><span class="theme-thumb theme-thumb-light"></span><strong>简约浅色</strong><small>清爽亮色，适合白天使用</small></button>
       </div>
       <p id="theme-status" class="field-hint" role="status">主题选择将保存在当前浏览器中。</p>
+    </section>
+    <section class="settings-card"><div class="settings-card-heading"><h3>卡片字段自定义</h3><p class="muted">每种显示模式分别选择字段；在线状态与重要告警始终保留。只影响当前浏览器。</p></div>
+      <div class="card-fields-head"><label>卡片模式 <select id="card-fields-layout"><option value="cards">标准</option><option value="compact">紧凑</option><option value="list">列表</option></select></label><button type="button" id="card-fields-reset" class="subtle-btn">恢复该模式默认</button></div>
+      <div id="card-fields-options" class="card-fields-options" role="group" aria-label="卡片可见字段"></div>
+      <p class="field-hint">修改后首页对应卡片即时更新。异常提示及服务器状态不能隐藏。</p>
+      <div id="card-fields-preview" class="card-fields-preview" aria-live="polite"></div>
     </section>
    </div>
    <div class="settings-pane" id="settings-account" role="tabpanel" hidden>
