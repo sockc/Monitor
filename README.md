@@ -53,6 +53,17 @@ Agent 首次安装会提示：**Monitor Server HTTPS 地址**、节点标识与�
 若同一机器同时运行 Server 和 Agent，升级时优先备份 Server 并同步重启 Agent。
 升级前建议检查 [Releases](https://github.com/sockc/Monitor/releases)。
 
+## V0.9.5：玻璃主题与公网 IP 自动定位
+
+- **默认主题**：参考提供的截图采用粉紫柔和背景与半透明磨砂玻璃卡片；顶栏「主题」及「设置 → 外观主题」均可切换梦幻玻璃、经典深色、简约浅色
+- 浏览器使用 `localStorage` 记住选择，不同步到 Server；若浏览器禁止存储，默认仍为玻璃主题
+- **自动位置**：新版 Agent 通过 `https://ipwho.is/?lang=zh-CN` 获取自身请求的公网出口 IP 及近似国家/城市，最多每 12 小时更新一次；失败后 1 小时再尝试。不会将反代 Nginx/Cloudflare 的地址当作 Agent 所在位置
+- 位置存于 Server 的 SQLite `node_geo` 表；原有节点位置 `node_metadata.location` 视为**手动覆盖**，优先级高于自动识别。清空手动值并保存后可恢复自动显示
+- 服务器位置基于公网出口 IP，不保证真实机房地址：代理、NAT、隧道、运营商 IP 库可能引起偏差
+- Agent 请求第三方 geolocation API 时，第三方可获知 Agent 的公网出口 IP。需要关闭此功能时在 `/etc/monitor/agent.env` 加入 `MONITOR_GEO_ENABLED=0`，再运行 `sudo systemctl restart monitor-agent`。关闭后已缓存的历史自动位置不会被新数据更新；管理员仍可手动设置位置
+- 升级流程：在 Server 运行 `sudo monitorctl self-update && sudo monitorctl upgrade server`，然后在**每台 Agent** 上运行 `sudo monitorctl self-update && sudo monitorctl upgrade agent`。旧 Agent 保持在线但不会上报自动位置
+- 截图展示了参考界面，并非无界面原始壁纸；当前默认主题还原其色彩与玻璃质感，不直接把带文字的截图作为背景
+
 ## V0.9.4：四列服务器驾驶舱与位置管理
 
 - 桌面宽屏（1250px 起）每行 4 张服务器卡片，中屏 2 张、手机 1 张；默认保持紧凑卡片，也可切换标准或列表
