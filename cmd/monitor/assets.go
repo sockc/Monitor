@@ -393,6 +393,18 @@ html[data-theme=glass] #view-settings .form-section-title,html[data-theme=light]
 html[data-theme=glass] #view-settings .form-section-title strong,html[data-theme=light] #view-settings .form-section-title strong{color:#344861}
 html[data-theme=glass] #view-settings .form-section-title small,html[data-theme=light] #view-settings .form-section-title small{color:#65768d}
 @media(max-width:420px){#view-overview .glass-node .five-metric strong{font-size:11px}#view-overview .glass-node .country-flag{font-size:18px}#view-overview .glass-node .plan-tag{font-size:9px;padding:4px 6px}}
+
+/* 0.9.7: hide missing values, accurate self-hosted flags and slim upload/download. */
+#view-overview .glass-node .country-flag{width:24px;height:18px;flex:0 0 24px;display:inline-flex;align-items:center;justify-content:center;font-size:0;overflow:hidden;border-radius:3px;box-shadow:0 1px 3px #192c4c35;background:#ffffffa8}
+#view-overview .glass-node .country-flag .flag-image{display:block;object-fit:cover;object-position:center;width:24px;height:18px;border-radius:3px}
+#view-overview .glass-node .card-cumulative{display:flex!important;flex-direction:row!important;align-items:center;justify-content:space-between;gap:7px!important;min-height:28px;margin:0 0 11px!important;padding:6px 9px;border-radius:10px;border:1px solid var(--node-stroke);background:var(--node-inlay)}
+#view-overview .glass-node .card-cumulative>span{display:flex;align-items:center;justify-content:center;gap:4px;flex:1 1 0;min-width:0;color:var(--node-muted);font-size:10px;white-space:nowrap}
+#view-overview .glass-node .card-cumulative b{color:var(--node-ink);font-size:11px;font-weight:750;overflow:hidden;text-overflow:ellipsis}
+#view-overview .glass-node .card-plan{margin-bottom:10px;min-height:0}
+#view-overview .glass-node .capability-tags{min-height:0;margin-bottom:11px}
+#view-overview .glass-node .card-identity{margin-bottom:9px}
+#view-overview .glass-node .quota-linear{margin-top:2px}
+@media(max-width:390px){#view-overview .glass-node .card-cumulative{padding:6px}#view-overview .glass-node .card-cumulative>span{font-size:9px}#view-overview .glass-node .card-cumulative b{font-size:10px}}
 `
 const appJS=`const $=x=>document.getElementById(x);
 const validThemes=['glass','dark','light'];
