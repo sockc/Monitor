@@ -5,7 +5,7 @@ set -euo pipefail
 
 SELF="/usr/local/bin/monitorctl"
 RAW="https://raw.githubusercontent.com/sockc/Monitor/main/scripts"
-VERSION="${MONITOR_VERSION:-v0.9.13}"
+VERSION="${MONITOR_VERSION:-v0.9.14}"
 
 note(){ printf '%s\n' "$*"; }
 fail(){ printf '错误：%s\n' "$*" >&2;exit 1; }
