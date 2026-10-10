@@ -23,6 +23,7 @@ type NodeProfile struct{
  PriceValue float64 `json:"price_value"`
  PriceCurrency string `json:"price_currency"`
  BillingCycle string `json:"billing_cycle"`
+ PeriodStart string `json:"period_start"`
  PortMbps int `json:"port_mbps"`
  HasIPv4 int `json:"has_ipv4"`
  HasIPv6 int `json:"has_ipv6"`
@@ -33,12 +34,13 @@ func validNodeProfile(p NodeProfile)bool{
  for _,c:=range p.CountryCode{if c<'A'||c>'Z'{return false}}
  switch p.PriceCurrency {case "USD","CNY","EUR","GBP","HKD","JPY","SGD","TWD","AUD","CAD":default:return false}
  switch p.BillingCycle {case "month","quarter","year","one_time":default:return false}
+ if p.PeriodStart!=""{d,e:=time.Parse("2006-01-02",p.PeriodStart);if e!=nil||d.Format("2006-01-02")!=p.PeriodStart{return false}}
  return true
 }
 func readNodeProfiles(ctx context.Context,db *sql.DB)(map[string]NodeProfile,error){
- rows,e:=db.QueryContext(ctx,"SELECT name,provider,country_code,price_value,price_currency,billing_cycle,port_mbps,has_ipv4,has_ipv6 FROM node_profile");if e!=nil{return nil,e};defer rows.Close()
+ rows,e:=db.QueryContext(ctx,"SELECT name,provider,country_code,price_value,price_currency,billing_cycle,period_start,port_mbps,has_ipv4,has_ipv6 FROM node_profile");if e!=nil{return nil,e};defer rows.Close()
  out:=map[string]NodeProfile{}
- for rows.Next(){var name string;var p NodeProfile;if e=rows.Scan(&name,&p.Provider,&p.CountryCode,&p.PriceValue,&p.PriceCurrency,&p.BillingCycle,&p.PortMbps,&p.HasIPv4,&p.HasIPv6);e!=nil{return nil,e};out[name]=p}
+ for rows.Next(){var name string;var p NodeProfile;if e=rows.Scan(&name,&p.Provider,&p.CountryCode,&p.PriceValue,&p.PriceCurrency,&p.BillingCycle,&p.PeriodStart,&p.PortMbps,&p.HasIPv4,&p.HasIPv6);e!=nil{return nil,e};out[name]=p}
  return out,rows.Err()
 }
 type Point struct{Time int64 `json:"time"`;CPU float64 `json:"cpu"`; Memory float64 `json:"memory"`; Disk float64 `json:"disk"`}
@@ -57,7 +59,7 @@ func openDB(path string)(*sql.DB,error){
  "CREATE TABLE IF NOT EXISTS agent_tokens(name TEXT PRIMARY KEY,hash TEXT NOT NULL)",
  "CREATE TABLE IF NOT EXISTS node_metadata(name TEXT PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '')",
  "CREATE TABLE IF NOT EXISTS node_geo(name TEXT PRIMARY KEY,public_ip TEXT NOT NULL DEFAULT '',auto_location TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)",
- "CREATE TABLE IF NOT EXISTS node_profile(name TEXT PRIMARY KEY,provider TEXT NOT NULL DEFAULT '',country_code TEXT NOT NULL DEFAULT '',price_value REAL NOT NULL DEFAULT 0,price_currency TEXT NOT NULL DEFAULT 'USD',billing_cycle TEXT NOT NULL DEFAULT 'year',port_mbps INTEGER NOT NULL DEFAULT 0,has_ipv4 INTEGER NOT NULL DEFAULT -1,has_ipv6 INTEGER NOT NULL DEFAULT -1)",
+ "CREATE TABLE IF NOT EXISTS node_profile(name TEXT PRIMARY KEY,provider TEXT NOT NULL DEFAULT '',country_code TEXT NOT NULL DEFAULT '',price_value REAL NOT NULL DEFAULT 0,price_currency TEXT NOT NULL DEFAULT 'USD',billing_cycle TEXT NOT NULL DEFAULT 'year',period_start TEXT NOT NULL DEFAULT '',port_mbps INTEGER NOT NULL DEFAULT 0,has_ipv4 INTEGER NOT NULL DEFAULT -1,has_ipv6 INTEGER NOT NULL DEFAULT -1)",
  }{if _,err=db.Exec(q);err!=nil{db.Close();return nil,fmt.Errorf("schema: %w",err)}}
  // Migration for existing installations: preserve all stored metadata and
  // add a user-controlled geographic location without guessing from public IP.
