@@ -15,6 +15,32 @@ import (
  "strings"
  "time"
 )
+// NodeProfile stores optional plan information shown in the dashboard.
+// has_ipv4/has_ipv6 are tri-state: -1 unknown, 0 no, 1 yes.
+type NodeProfile struct{
+ Provider string `json:"provider"`
+ CountryCode string `json:"country_code"`
+ PriceValue float64 `json:"price_value"`
+ PriceCurrency string `json:"price_currency"`
+ BillingCycle string `json:"billing_cycle"`
+ PortMbps int `json:"port_mbps"`
+ HasIPv4 int `json:"has_ipv4"`
+ HasIPv6 int `json:"has_ipv6"`
+}
+func defaultNodeProfile() NodeProfile {return NodeProfile{PriceCurrency:"USD",BillingCycle:"year",HasIPv4:-1,HasIPv6:-1}}
+func validNodeProfile(p NodeProfile)bool{
+ if len([]rune(p.Provider))>80||len(p.CountryCode)!=0&&len(p.CountryCode)!=2||p.PriceValue<0||p.PriceValue>100000000||p.PriceValue!=p.PriceValue||p.PortMbps<0||p.PortMbps>1000000||p.HasIPv4< -1||p.HasIPv4>1||p.HasIPv6< -1||p.HasIPv6>1{return false}
+ for _,c:=range p.CountryCode{if c<'A'||c>'Z'{return false}}
+ switch p.PriceCurrency {case "USD","CNY","EUR","GBP","HKD","JPY","SGD","TWD","AUD","CAD":default:return false}
+ switch p.BillingCycle {case "month","quarter","year","one_time":default:return false}
+ return true
+}
+func readNodeProfiles(ctx context.Context,db *sql.DB)(map[string]NodeProfile,error){
+ rows,e:=db.QueryContext(ctx,"SELECT name,provider,country_code,price_value,price_currency,billing_cycle,port_mbps,has_ipv4,has_ipv6 FROM node_profile");if e!=nil{return nil,e};defer rows.Close()
+ out:=map[string]NodeProfile{}
+ for rows.Next(){var name string;var p NodeProfile;if e=rows.Scan(&name,&p.Provider,&p.CountryCode,&p.PriceValue,&p.PriceCurrency,&p.BillingCycle,&p.PortMbps,&p.HasIPv4,&p.HasIPv6);e!=nil{return nil,e};out[name]=p}
+ return out,rows.Err()
+}
 type Point struct{Time int64 `json:"time"`;CPU float64 `json:"cpu"`; Memory float64 `json:"memory"`; Disk float64 `json:"disk"`}
 func openDB(path string)(*sql.DB,error){
  if err:=os.MkdirAll(filepath.Dir(path),0700);err!=nil{return nil,err}
@@ -31,6 +57,7 @@ func openDB(path string)(*sql.DB,error){
  "CREATE TABLE IF NOT EXISTS agent_tokens(name TEXT PRIMARY KEY,hash TEXT NOT NULL)",
  "CREATE TABLE IF NOT EXISTS node_metadata(name TEXT PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '')",
  "CREATE TABLE IF NOT EXISTS node_geo(name TEXT PRIMARY KEY,public_ip TEXT NOT NULL DEFAULT '',auto_location TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)",
+ "CREATE TABLE IF NOT EXISTS node_profile(name TEXT PRIMARY KEY,provider TEXT NOT NULL DEFAULT '',country_code TEXT NOT NULL DEFAULT '',price_value REAL NOT NULL DEFAULT 0,price_currency TEXT NOT NULL DEFAULT 'USD',billing_cycle TEXT NOT NULL DEFAULT 'year',port_mbps INTEGER NOT NULL DEFAULT 0,has_ipv4 INTEGER NOT NULL DEFAULT -1,has_ipv6 INTEGER NOT NULL DEFAULT -1)",
  }{if _,err=db.Exec(q);err!=nil{db.Close();return nil,fmt.Errorf("schema: %w",err)}}
  // Migration for existing installations: preserve all stored metadata and
  // add a user-controlled geographic location without guessing from public IP.
@@ -44,6 +71,14 @@ func openDB(path string)(*sql.DB,error){
  if err=rows.Err();err!=nil{rows.Close();db.Close();return nil,err}
  rows.Close()
  if !hasLocation{if _,err=db.Exec("ALTER TABLE node_metadata ADD COLUMN location TEXT NOT NULL DEFAULT ''");err!=nil{db.Close();return nil,fmt.Errorf("location migration: %w",err)}}
+ // Older IP-location tables may not have a country code for the flag.
+ geoRows,eGeo:=db.Query("PRAGMA table_info(node_geo)")
+ if eGeo!=nil{db.Close();return nil,eGeo}
+ hasCountry:=false
+ for geoRows.Next(){var cid,notnull,pk int;var name,typ string;var def sql.NullString;if eGeo=geoRows.Scan(&cid,&name,&typ,&notnull,&def,&pk);eGeo!=nil{geoRows.Close();db.Close();return nil,eGeo};if name=="country_code"{hasCountry=true}}
+ if eGeo=geoRows.Err();eGeo!=nil{geoRows.Close();db.Close();return nil,eGeo};geoRows.Close()
+ if !hasCountry{if _,eGeo=db.Exec("ALTER TABLE node_geo ADD COLUMN country_code TEXT NOT NULL DEFAULT ''");eGeo!=nil{db.Close();return nil,fmt.Errorf("geo migration: %w",eGeo)}}
+
  return db,nil
 }
 func validNodeToken(ctx context.Context,db *sql.DB,name,token,legacy string)bool{
@@ -113,6 +148,7 @@ func removeNode(ctx context.Context,db *sql.DB,name string)error{
  if _,err=tx.ExecContext(ctx,"DELETE FROM samples WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_metadata WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_geo WHERE name=?",name);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"DELETE FROM node_profile WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_daily WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_quarter WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_limits WHERE name=?",name);err!=nil{return err}
@@ -127,6 +163,7 @@ func renameNode(ctx context.Context,db *sql.DB,old,new string)error{
  if _,err=tx.ExecContext(ctx,"UPDATE samples SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE node_metadata SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE node_geo SET name=? WHERE name=?",new,old);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"UPDATE node_profile SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE traffic_daily SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE traffic_quarter SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE node_limits SET name=? WHERE name=?",new,old);err!=nil{return err}
