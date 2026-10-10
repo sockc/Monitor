@@ -251,13 +251,43 @@ func main(){
  if cfg.Webhook!=""&&!validWebhook(cfg.Webhook){http.Error(w,"webhook must be HTTPS without credentials",400);return}
  if e:=writeAlertSettings(s.db,cfg);e!=nil{http.Error(w,"database error",500);return};w.WriteHeader(204)
  })
+ mux.HandleFunc("/api/v1/node-ui",func(w http.ResponseWriter,r *http.Request){
+  if !authorized(w,r){return}
+  if r.Method!="POST"{http.Error(w,"method",405);return}
+  if !sameOrigin(r){http.Error(w,"origin",403);return}
+  r.Body=http.MaxBytesReader(w,r.Body,65536);defer r.Body.Close()
+  var in struct{Action string `json:"action"`;Name string `json:"name"`;Favorite *bool `json:"favorite"`;Names []string `json:"names"`}
+  if json.NewDecoder(r.Body).Decode(&in)!=nil{http.Error(w,"invalid input",400);return}
+  switch in.Action {
+  case "favorite":
+   if !validNodeName(in.Name)||in.Favorite==nil{http.Error(w,"invalid favorite",400);return}
+   s.RLock();_,exists:=s.Nodes[in.Name];s.RUnlock()
+   if !exists{http.Error(w,"node not found",404);return}
+   value:=0;if *in.Favorite{value=1}
+   if _,e:=s.db.ExecContext(r.Context(),"INSERT INTO node_favorites(name,favorite) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET favorite=excluded.favorite",in.Name,value);e!=nil{http.Error(w,"database error",500);return}
+  case "reorder":
+   // Every currently monitored node must be included exactly once.
+   s.RLock();roster:=make(map[string]bool,len(s.Nodes));for name:=range s.Nodes{roster[name]=true};s.RUnlock()
+   if len(in.Names)!=len(roster)||len(in.Names)>9999{http.Error(w,"invalid node order",400);return}
+   seen:=map[string]bool{}
+   for _,name:=range in.Names{if !validNodeName(name)||!roster[name]||seen[name]{http.Error(w,"invalid or duplicate node",400);return};seen[name]=true}
+   tx,e:=s.db.BeginTx(r.Context(),nil);if e!=nil{http.Error(w,"database error",500);return};defer tx.Rollback()
+   for i,name:=range in.Names{
+    if _,e=tx.ExecContext(r.Context(),"INSERT INTO node_metadata(name,sort_order) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET sort_order=excluded.sort_order",name,i+1);e!=nil{http.Error(w,"database error",500);return}
+   }
+   if e=tx.Commit();e!=nil{http.Error(w,"database error",500);return}
+  default:http.Error(w,"invalid action",400);return
+  }
+  w.WriteHeader(http.StatusNoContent)
+ })
  mux.HandleFunc("/api/v1/nodes",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}
   geo:=map[string][3]string{};gr,e:=s.db.QueryContext(r.Context(),"SELECT name,public_ip,auto_location,country_code FROM node_geo");if e!=nil{http.Error(w,"database error",500);return};for gr.Next(){var name,ip,location,country string;if gr.Scan(&name,&ip,&location,&country)==nil{geo[name]=[3]string{ip,location,country}}};if e=gr.Err();e!=nil{gr.Close();http.Error(w,"database error",500);return};gr.Close()
   meta:=map[string][4]string{};sortOrders:=map[string]int{};rows,e:=s.db.QueryContext(r.Context(),"SELECT name,display_name,group_name,location,notes,sort_order FROM node_metadata");if e!=nil{http.Error(w,"database error",500);return};for rows.Next(){var name,display,group,location,notes string;var sortOrder int;if rows.Scan(&name,&display,&group,&location,&notes,&sortOrder)==nil{meta[name]=[4]string{display,group,location,notes};sortOrders[name]=sortOrder}};if e=rows.Err();e!=nil{rows.Close();http.Error(w,"database error",500);return};rows.Close()
+  favorites:=map[string]bool{};favRows,e:=s.db.QueryContext(r.Context(),"SELECT name FROM node_favorites WHERE favorite=1");if e!=nil{http.Error(w,"database error",500);return};for favRows.Next(){var name string;if favRows.Scan(&name)==nil{favorites[name]=true}};if e=favRows.Err();e!=nil{favRows.Close();http.Error(w,"database error",500);return};favRows.Close()
   profiles,e:=readNodeProfiles(r.Context(),s.db);if e!=nil{http.Error(w,"database error",500);return}
   s.RLock();out:=make([]map[string]any,0,len(s.Nodes))
-  for _,n:=range s.Nodes{p,exists:=profiles[n.Name];if !exists{p=defaultNodeProfile()};country:=p.CountryCode;if country==""{country=geo[n.Name][2]};out=append(out,map[string]any{"profile":p,"country_code":country,"name":n.Name,"display_name":meta[n.Name][0],"sort_order":sortOrders[n.Name],"group":meta[n.Name][1],"location":func()string{if meta[n.Name][2]!=""{return meta[n.Name][2]};return geo[n.Name][1]}(),"manual_location":meta[n.Name][2],"auto_location":geo[n.Name][1],"public_ip":geo[n.Name][0],"public_ipv4":n.PublicIPv4,"public_ipv6":n.PublicIPv6,"location_source":func()string{if meta[n.Name][2]!=""{return "manual"};if geo[n.Name][1]!=""{return "ip"};return "unknown"}(),"notes":meta[n.Name][3],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"cpu_model":n.CPUModel,"agent_version":n.AgentVersion,"load1":n.Load1,"load5":n.Load5,"load15":n.Load15,"swap_total":n.SwapTotal,"swap_used":n.SwapUsed,"disk_read_speed":n.DiskReadSpeed,"disk_write_speed":n.DiskWriteSpeed,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"boot_time":bootTimeFromSample(n.Sample),"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
+  for _,n:=range s.Nodes{p,exists:=profiles[n.Name];if !exists{p=defaultNodeProfile()};country:=p.CountryCode;if country==""{country=geo[n.Name][2]};out=append(out,map[string]any{"profile":p,"country_code":country,"name":n.Name,"display_name":meta[n.Name][0],"sort_order":sortOrders[n.Name],"favorite":favorites[n.Name],"group":meta[n.Name][1],"location":func()string{if meta[n.Name][2]!=""{return meta[n.Name][2]};return geo[n.Name][1]}(),"manual_location":meta[n.Name][2],"auto_location":geo[n.Name][1],"public_ip":geo[n.Name][0],"public_ipv4":n.PublicIPv4,"public_ipv6":n.PublicIPv6,"location_source":func()string{if meta[n.Name][2]!=""{return "manual"};if geo[n.Name][1]!=""{return "ip"};return "unknown"}(),"notes":meta[n.Name][3],"hostname":n.Hostname,"os":n.OS,"arch":n.Arch,"cpu":n.CPU,"cpu_cores":n.CPUCores,"cpu_model":n.CPUModel,"agent_version":n.AgentVersion,"load1":n.Load1,"load5":n.Load5,"load15":n.Load15,"swap_total":n.SwapTotal,"swap_used":n.SwapUsed,"disk_read_speed":n.DiskReadSpeed,"disk_write_speed":n.DiskWriteSpeed,"memory_total":n.MemoryTotal,"memory_used":n.MemoryUsed,"disk_total":n.DiskTotal,"disk_used":n.DiskUsed,"memory":n.Memory,"disk":n.Disk,"rx_bytes":n.RxBytes,"tx_bytes":n.TxBytes,"uptime":n.Uptime,"rx_speed":n.RxSpeed,"tx_speed":n.TxSpeed,"boot_time":bootTimeFromSample(n.Sample),"last_seen":n.LastSeen,"online":time.Since(n.LastSeen)<30*time.Second})};s.RUnlock()
   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(out)
  })
  mux.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){
