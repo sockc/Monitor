@@ -48,4 +48,11 @@ func TestDashboardUIControls(t *testing.T) {
  if !strings.Contains(appJS, "monitor-theme"){t.Error("theme persistence missing")}
  if !strings.Contains(dashboardHTML, "metadata-auto-location"){t.Error("automatic geo help text missing")}
  for _,piece:=range []string{"metric-five","card-cumulative","capability-tags","quota-linear","countryFlag","IPv4","IPv6","planPort"}{if !strings.Contains(appJS,piece){t.Errorf("missing VPS card component: %s",piece)}}
+ for _,phrase:=range []string{"价格未设置","到期未设置","端口未设","IPv4 ?","IPv6 ?"}{
+  if strings.Contains(appJS,phrase){t.Errorf("unconfigured VPS field must be hidden, found %q",phrase)}
+ }
+ if !strings.Contains(appJS, "/static/flags/"){t.Error("expected local SVG flag images")}
+ if !strings.Contains(appJS,"n.public_ipv4")||!strings.Contains(appJS,"n.public_ipv6"){t.Error("expected both outbound IP families in dashboard")}
+ if !strings.Contains(appJS, "card-cumulative"){t.Error("single-row total traffic missing")}
+
 }
