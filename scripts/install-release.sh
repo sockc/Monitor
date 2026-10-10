@@ -16,7 +16,7 @@ fi
 
 ARCH="$(uname -m)"
 case "$ARCH" in x86_64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "Unsupported CPU $ARCH" >&2;exit 1;;esac
-VERSION="${MONITOR_VERSION:-v0.9.5}"
+VERSION="${MONITOR_VERSION:-v0.9.6}"
 BASE="https://github.com/sockc/Monitor/releases/download/$VERSION"
 
 # Validate prerequisites and agent credentials BEFORE installing any binary.
