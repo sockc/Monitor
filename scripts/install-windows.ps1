@@ -6,7 +6,7 @@ param(
  [string]$Server='',
  [string]$NodeName='',
  [string]$Token='',
- [string]$Version='v0.9.16'
+ [string]$Version='v0.9.16.1'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -25,6 +25,15 @@ function Require-Admin {
  }
 }
 function Existing-Service {return Get-Service -Name $service -ErrorAction SilentlyContinue}
+function Resolve-WindowsSystemTool([string]$FileName) {
+ # Resolve native executables by their absolute system path. PATH may omit
+ # System32 in restricted PowerShell sessions even on a healthy Windows host.
+ $tool=Join-Path ([Environment]::SystemDirectory) $FileName
+ if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) {
+  throw "找不到 Windows 系统程序：$tool。请确认系统文件完整。"
+ }
+ return $tool
+}
 function Check-ConnectionParameters {
  if ([string]::IsNullOrWhiteSpace($Server)) {throw '缺少 Monitor Server HTTPS 地址。'}
  if ($Server -notmatch '^https://[^\s/]+/?$') {throw 'Server 地址必须是 HTTPS 域名或 IP，不能包含路径和账号信息。'}
@@ -40,13 +49,24 @@ function Check-ConnectionParameters {
  if ($Token -notmatch '^[0-9a-fA-F]{64}$') {throw '节点 Token 无效（应为 64 位十六进制）。'}
 }
 function Write-PrivateConfig {
+ $icacls=Resolve-WindowsSystemTool 'icacls.exe'
  New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+ # Protect the directory before writing the secret, including recovery after
+ # an earlier failed installation that left a credential file behind.
+ & $icacls $dataDir '/inheritance:r' '/grant:r' '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+ if ($LASTEXITCODE -ne 0) {throw '无法设置 Monitor 配置目录权限，已停止安装。'}
  # No BOM; never log credentials.
  $body="MONITOR_SERVER=$($Server.TrimEnd('/'))`nMONITOR_NODE_NAME=$NodeName`nMONITOR_AGENT_TOKEN=$Token`n"
- [IO.File]::WriteAllText($config,$body,(New-Object Text.UTF8Encoding($false)))
- # SIDs are locale-independent: SYSTEM and local Administrators only.
- & icacls.exe $config '/inheritance:r' '/grant:r' '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
- if ($LASTEXITCODE -ne 0) {throw '无法设置凭据文件 ACL，已停止安装。'}
+ try {
+  [IO.File]::WriteAllText($config,$body,(New-Object Text.UTF8Encoding($false)))
+  # Locale-independent SIDs: LocalSystem and built-in Administrators.
+  & $icacls $config '/inheritance:r' '/grant:r' '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
+  if ($LASTEXITCODE -ne 0) {throw '无法设置 Agent 凭据文件权限。'}
+ } catch {
+  # Do not leave readable credentials on disk when ACL hardening fails.
+  Remove-Item -LiteralPath $config -Force -ErrorAction SilentlyContinue
+  throw
+ }
 }
 function Download-Release([string]$targetDir) {
  $fileName='monitor-windows-amd64.exe'
@@ -80,7 +100,7 @@ if ($Action -eq 'Uninstall') {
  $old=Existing-Service
  if ($null -eq $old) {Write-Host 'MonitorAgent 尚未安装。';exit 0}
  if ($old.Status -ne 'Stopped') {Stop-Service -Name $service -Force -ErrorAction Stop}
- & sc.exe delete $service | Out-Host
+ & (Resolve-WindowsSystemTool 'sc.exe') delete $service | Out-Host
  if ($LASTEXITCODE -ne 0) {throw '删除服务失败。'}
  Write-Host '服务已卸载。程序与 Agent 凭据保留，可用于后续恢复；需彻底删除请手动清理 ProgramData\Monitor。'
  exit 0
