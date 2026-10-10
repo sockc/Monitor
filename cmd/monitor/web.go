@@ -9,13 +9,12 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div><span class="summary-icon">◌</span><div><small>离线节点</small><strong id="offline">—</strong></div></div>
   <div><span class="summary-icon">◇</span><div><small>当前告警</small><strong id="alert-count">—</strong></div></div>
  </div>
- <div class="dashboard-toolbar"><div class="toolbar-label"><h3>服务器列表</h3><span id="node-visible-count" class="muted">—</span></div>
-  <div class="dashboard-filters">
-   <input id="node-search" type="search" aria-label="搜索服务器" placeholder="搜索名称、地区、分组">
-   <select id="node-group" aria-label="筛选服务器分组"><option value="">全部分组</option></select>
-   <select id="node-order" aria-label="排序方式"><option value="name">名称排序</option><option value="offline">离线优先</option><option value="cpu">CPU 由高到低</option></select>
+ <div class="dashboard-toolbar">
+  <div class="dashboard-toolbar-head"><div class="toolbar-label"><h3>服务器列表</h3><span id="node-visible-count" class="muted">—</span></div><button type="button" class="primary-btn" id="add-node">＋ 添加</button></div>
+  <div class="dashboard-filters" role="group" aria-label="搜索、筛选与显示方式">
+   <div class="filter-search"><input id="node-search" type="search" aria-label="搜索服务器" placeholder="搜索名称、地区、分组"></div>
+   <div class="filter-selects"><select id="node-group" aria-label="筛选服务器分组"><option value="">全部分组</option></select><select id="node-order" aria-label="排序方式"><option value="name">名称排序</option><option value="offline">离线优先</option><option value="cpu">CPU 由高到低</option></select></div>
    <div class="layout-switch" role="group" aria-label="服务器显示方式"><button type="button" class="layout-button" data-layout="cards">标准</button><button type="button" class="layout-button active" data-layout="compact">紧凑</button><button type="button" class="layout-button" data-layout="list">列表</button></div>
-   <button type="button" class="primary-btn" id="add-node">＋ 添加节点</button>
   </div>
  </div>
  <section id="nodes" aria-label="服务器列表"></section>
