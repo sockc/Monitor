@@ -45,7 +45,7 @@ type agentGeo struct{IP string;Location string}
 // longer than the HTTP timeout when the lookup fails.
 func lookupAgentGeo(c *http.Client)(agentGeo,error){
  ctx,cancel:=context.WithTimeout(context.Background(),4*time.Second);defer cancel()
- req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"https://ipwho.is/",nil);if err!=nil{return agentGeo{},err}
+ req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"https://ipwho.is/?lang=zh-CN",nil);if err!=nil{return agentGeo{},err}
  req.Header.Set("User-Agent","Monitor-Agent/"+monitorVersion)
  resp,err:=c.Do(req);if err!=nil{return agentGeo{},err};defer resp.Body.Close()
  if resp.StatusCode!=200{return agentGeo{},fmt.Errorf("location API returned HTTP %d",resp.StatusCode)}
