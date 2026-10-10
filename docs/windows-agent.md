@@ -1,4 +1,4 @@
-# Windows Agent (V0.9.16)
+# Windows Agent (V0.9.16.1)
 
 Windows x64 Agent reports to the **existing Linux Monitor Server**. Windows Server mode is not a supported deployment.
 
@@ -6,7 +6,7 @@ Windows x64 Agent reports to the **existing Linux Monitor Server**. Windows Serv
 
 - Windows 10/11 x64 or Windows Server 2019/2022/2025 x64
 - Administrator PowerShell 5.1+; outbound HTTPS (443) access to the Monitor Server and GitHub Releases
-- Monitor Server upgraded to V0.9.16 to show the Windows install option
+- Monitor Server upgraded to V0.9.16.1 to show the Windows install option
 
 ## First installation
 
@@ -29,7 +29,7 @@ Retrieve the official PowerShell script from `https://raw.githubusercontent.com/
 
 Upgrades preserve the existing credentials, identity, and historical data. Uninstall stops/removes the service but retains installed files and credentials by default. Deleting a node in the Monitor Web UI is separate and **can delete monitoring history**.
 
-## Agent metrics in V0.9.16
+## Agent metrics in V0.9.16.1
 
 - CPU utilization: Win32 GetSystemTimes delta
 - Physical memory: GlobalMemoryStatusEx
