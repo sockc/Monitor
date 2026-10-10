@@ -14,7 +14,7 @@ func TestMobileDashboardControls(t *testing.T) {
  for _,m:=range regexp.MustCompile(`\bid="([^"]+)"`).FindAllStringSubmatch(dashboardHTML,-1){ids[m[1]]++}
  for _,id:=range elements{if ids[id]!=1{t.Errorf("element %q should appear exactly once, got %d",id,ids[id])}}
  if ids["node-order"]!=0{t.Error("homepage sort selector should be removed")}
- if !strings.Contains(styleCSS,".filter-selects{grid-column:2!important;grid-row:1!important}"){t.Error("search and group should share first filter row")}
+ if !strings.Contains(styleCSS+mobileRefinementCSS,".filter-selects{grid-column:2!important;grid-row:1!important}"){t.Error("search and group should share first filter row")}
  for _,markup:=range []string{`class="dashboard-toolbar-head"`,`class="filter-search"`,`class="filter-selects"`,`data-layout="cards"`,`data-layout="compact"`,`data-layout="list"`}{
   if !strings.Contains(dashboardHTML,markup){t.Errorf("dashboard markup missing %q",markup)}
  }
@@ -35,6 +35,6 @@ func TestCardLayoutsHaveDistinctContent(t *testing.T) {
   "server-grid[data-layout=compact]", "server-grid[data-layout=list]",
   "node-list-summary", "compact-month", "@media(max-width:350px)",
  }{
-  if !strings.Contains(styleCSS,css){t.Errorf("responsive style missing %q",css)}
+  if !strings.Contains(styleCSS+mobileRefinementCSS,css){t.Errorf("responsive style missing %q",css)}
  }
 }
