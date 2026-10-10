@@ -773,9 +773,40 @@ $("metadata-form").addEventListener("submit",async e=>{
 });
 function updateGroupOptions(nodes){const el=$('node-group'),value=el.value,groups=[...new Set(nodes.map(n=>n.group).filter(Boolean))].sort();const next=['',...groups];if([...el.options].map(x=>x.value).join('|')!==next.join('|')){el.replaceChildren(new Option('全部分组',''),...groups.map(x=>new Option(x,x)));el.value=value}}
 function nodeOrder(a,b){const aa=Number(a.sort_order)>0?Number(a.sort_order):10000,bb=Number(b.sort_order)>0?Number(b.sort_order):10000;return aa-bb||(a.display_name||a.hostname||a.name).localeCompare(b.display_name||b.hostname||b.name,'zh-Hans-CN')}
-function filteredNodes(nodes){const q=$('node-search').value.trim().toLowerCase(),group=$('node-group').value;return nodes.filter(n=>(!group||n.group===group)&&(!q||[n.name,n.display_name,n.group,n.location,n.os,n.notes,n.hostname].some(x=>String(x||'').toLowerCase().includes(q)))).sort(nodeOrder)}
+function nodeHasAlert(n){
+ const p=trafficPeriods[n.name]||{},quota=Number(p.quota_gb)||0,used=(Number(p.month_rx)||0)+(Number(p.month_tx)||0);
+ return !n.online||(n.online&&[n.cpu,n.memory,n.disk].some(v=>Number(v)>=90))||
+  (quota>0&&p.has_samples&&used>=quota*800000000)||
+  (p.expires_on&&daysUntil(p.expires_on,p.timezone)<=7)||
+  lastAlertEvents.some(e=>!e.end&&e.node===n.name);
+}
+function filteredNodes(nodes){const q=$('node-search').value.trim().toLowerCase(),group=$('node-group').value;return nodes.filter(n=>(!group||n.group===group)&&(!q||[n.name,n.display_name,n.group,n.location,n.os,n.notes,n.hostname].some(x=>String(x||'').toLowerCase().includes(q)))&&(nodeFilter!=='favorite'||n.favorite)&&(nodeFilter!=='alert'||nodeHasAlert(n))).sort(nodeOrder)}
 ['node-search','node-group'].forEach(id=>$(id).addEventListener('input',()=>{renderOverviewNodes()}));
 let currentLayout='compact';let trafficPeriods={};let nodeLimitsCache={};
+const cardFieldLabels={cpu:'CPU 使用率',memory:'内存使用率',disk:'磁盘使用率',speed:'实时上传／下载',traffic:'本月流量',price:'套餐与到期',cumulative:'累计网卡流量',tags:'IPv4／IPv6 与带宽',boot:'开机时间'};
+const cardFieldDefaults={cards:['cpu','memory','disk','speed','traffic','price','cumulative','tags','boot'],compact:['cpu','memory','disk','speed','traffic'],list:['cpu','memory','disk']};
+const cardFieldAllowed={cards:Object.keys(cardFieldLabels),compact:['cpu','memory','disk','speed','traffic','price','boot'],list:['cpu','memory','disk','speed','traffic']};
+let cardFieldPreferences={};
+try{const saved=JSON.parse(localStorage.getItem('monitor-card-fields')||'{}');for(const mode of Object.keys(cardFieldDefaults)){if(Array.isArray(saved[mode]))cardFieldPreferences[mode]=saved[mode].filter(x=>cardFieldAllowed[mode].includes(x))}}catch(e){}
+function cardFieldOn(mode,key){return (cardFieldPreferences[mode]||cardFieldDefaults[mode]).includes(key)}
+function saveCardFields(){try{localStorage.setItem('monitor-card-fields',JSON.stringify(cardFieldPreferences))}catch(e){}}
+function updateCardFieldsEditor(){
+ const mode=$('card-fields-layout').value,selected=cardFieldPreferences[mode]||cardFieldDefaults[mode],root=$('card-fields-options');
+ root.replaceChildren();for(const key of cardFieldAllowed[mode]){
+  const label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.value=key;check.checked=selected.includes(key);check.addEventListener('change',()=>{const current=cardFieldPreferences[mode]||cardFieldDefaults[mode];cardFieldPreferences[mode]=check.checked?[...new Set([...current,key])]:current.filter(x=>x!==key);saveCardFields();renderOverviewNodes();updateCardFieldsEditor()});label.append(check,document.createTextNode(cardFieldLabels[key]));root.append(label);
+ }
+ $('card-fields-preview').textContent='预览：服务器名称 · 在线状态'+(selected.length?' · '+selected.map(x=>cardFieldLabels[x]).join(' · '):'（仅基础信息）')+' · 异常提醒';
+}
+$('card-fields-layout').addEventListener('change',updateCardFieldsEditor);
+$('card-fields-reset').addEventListener('click',()=>{delete cardFieldPreferences[$('card-fields-layout').value];saveCardFields();updateCardFieldsEditor();renderOverviewNodes()});
+updateCardFieldsEditor();
+let nodeFilter='all',collapsedGroups={};
+try{const f=localStorage.getItem('monitor-quick-filter');if(['all','favorite','alert'].includes(f))nodeFilter=f;const g=JSON.parse(localStorage.getItem('monitor-collapsed-groups')||'{}');if(g&&typeof g==='object'&&!Array.isArray(g))collapsedGroups=g}catch(e){}
+function setNodeFilter(next){nodeFilter=next;try{localStorage.setItem('monitor-quick-filter',next)}catch(e){};document.querySelectorAll('[data-node-filter]').forEach(b=>{const on=b.dataset.nodeFilter===next;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on))});renderOverviewNodes()}
+document.querySelectorAll('[data-node-filter]').forEach(b=>b.addEventListener('click',()=>setNodeFilter(b.dataset.nodeFilter)));
+$('overview-alert-filter').addEventListener('click',()=>{setNodeFilter('alert');$('nodes').scrollIntoView({behavior:'smooth',block:'start'})});
+document.querySelectorAll('[data-node-filter]').forEach(b=>{const on=b.dataset.nodeFilter===nodeFilter;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on))});
+
 try{const saved=localStorage.getItem('monitor-node-layout');if(['cards','compact','list'].includes(saved))currentLayout=saved}catch(e){}
 function updateLayout(){const container=$('nodes');container.classList.add('server-grid');container.dataset.layout=currentLayout;document.querySelectorAll('.layout-button').forEach(b=>{const active=b.dataset.layout===currentLayout;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))})}
 document.querySelectorAll('.layout-button').forEach(b=>b.addEventListener('click',()=>{currentLayout=b.dataset.layout;try{localStorage.setItem('monitor-node-layout',currentLayout)}catch(e){}updateLayout();renderOverviewNodes()}));
@@ -801,34 +832,59 @@ function patchDashboardElement(oldNode,newNode){
  }
 }
 function renderOverviewNodes(){
- const visible=filteredNodes(cachedNodes),root=$('nodes');
- const layoutChanged=root.dataset.renderedLayout!==currentLayout;
+ const visible=filteredNodes(cachedNodes),root=$('nodes'),layoutChanged=root.dataset.renderedLayout!==currentLayout;
  if(layoutChanged){root.replaceChildren();root.dataset.renderedLayout=currentLayout}
- if(!visible.length){root.replaceChildren();const empty=document.createElement('div');empty.className='dashboard-empty';empty.innerHTML='<strong>没有匹配的服务器</strong><span>试试修改搜索关键词或切换分组</span>';root.appendChild(empty)}
- else{
-  const expected=new Set(visible.map(n=>n.name));
-  for(const card of [...root.children])if(!card.dataset.node||!expected.has(card.dataset.node))card.remove();
-  const template=document.createElement('template');
-  for(let i=0;i<visible.length;i++){
-   const n=visible[i];template.innerHTML=renderNode(n);const fresh=template.content.firstElementChild;
-   let existing=[...root.children].find(el=>el.dataset.node===n.name);
+ const grouped=new Map();
+ for(const n of visible){const g=n.group||'未分组';if(!grouped.has(g))grouped.set(g,[]);grouped.get(g).push(n)}
+ const desired=[];
+ for(const [group,nodes] of grouped){
+  desired.push({group});
+  if(!collapsedGroups[group])for(const n of nodes)desired.push({node:n});
+ }
+ const keys=new Set(desired.map(v=>v.node?'n:'+v.node.name:'g:'+v.group));
+ for(const el of [...root.children]){const key=el.dataset.node?'n:'+el.dataset.node:el.dataset.groupHeader?'g:'+el.dataset.groupHeader:'';if(!keys.has(key))el.remove()}
+ if(!visible.length){
+  root.replaceChildren();const empty=document.createElement('div');empty.className='dashboard-empty';
+  empty.textContent=nodeFilter==='favorite'?'还没有收藏的服务器':nodeFilter==='alert'?'当前筛选中没有异常服务器':'没有匹配的服务器';
+  root.appendChild(empty)
+ }else{
+  const tpl=document.createElement('template');
+  for(let i=0;i<desired.length;i++){
+   const item=desired[i];let existing, fresh;
+   if(item.node){
+    const name=item.node.name;
+    existing=[...root.children].find(el=>el.dataset.node===name);
+    tpl.innerHTML=renderNode(item.node);fresh=tpl.content.firstElementChild;
+   }else{
+    existing=[...root.children].find(el=>el.dataset.groupHeader===item.group);
+    fresh=document.createElement('button');fresh.type='button';fresh.className='node-group-heading';fresh.dataset.groupHeader=item.group;
+    fresh.setAttribute('aria-expanded',String(!collapsedGroups[item.group]));
+    const label=document.createElement('span');label.textContent=(collapsedGroups[item.group]?'▸ ':'▾ ')+item.group;
+    const count=document.createElement('small');count.textContent=grouped.get(item.group).length+' 台';
+    fresh.append(label,count);
+   }
    if(!existing){root.insertBefore(fresh,root.children[i]||null)}
-   else{
-    if(root.children[i]!==existing)root.insertBefore(existing,root.children[i]||null);
-    patchDashboardElement(existing,fresh);
+   else{if(root.children[i]!==existing)root.insertBefore(existing,root.children[i]||null);
+    if(item.node)patchDashboardElement(existing,fresh);
+    else{existing.setAttribute('aria-expanded',fresh.getAttribute('aria-expanded'));existing.replaceChildren(...fresh.childNodes)}
    }
   }
  }
  $('node-visible-count').textContent='显示 '+visible.length+' / '+cachedNodes.length+' 台';
  if(quickInfoNode){
-  if(visible.some(n=>n.name===quickInfoNode)){
+  if(visible.some(n=>n.name===quickInfoNode)&&!collapsedGroups[(cachedNodes.find(n=>n.name===quickInfoNode)||{}).group||'未分组']){
    const trigger=[...document.querySelectorAll('.node-info-trigger')].find(b=>b.dataset.infoNode===quickInfoNode);
    if(trigger)trigger.setAttribute('aria-expanded','true');
    if(!layoutChanged)positionNodeInfo();else showNodeInfo(quickInfoNode,quickInfoPinned)
   }else hideNodeInfo()
  }
 }
-
+$('nodes').addEventListener('click',e=>{const b=e.target.closest('[data-group-header]');if(!b)return;const g=b.dataset.groupHeader;collapsedGroups[g]=!collapsedGroups[g];try{localStorage.setItem('monitor-collapsed-groups',JSON.stringify(collapsedGroups))}catch(err){};renderOverviewNodes()});
+async function saveNodeFavorite(name,favorite){
+ const res=await fetch('/api/v1/node-ui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'favorite',name,favorite})});
+ if(!res.ok)throw Error(await res.text());
+ const node=cachedNodes.find(n=>n.name===name);if(node)node.favorite=favorite;renderOverviewNodes();
+}
 function dateInZone(zone){try{const d=new Intl.DateTimeFormat('en-GB',{timeZone:zone||'UTC',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=x=>d.find(y=>y.type===x).value;return get('year')+'-'+get('month')+'-'+get('day')}catch(e){return new Date().toISOString().slice(0,10)}}
 function daysUntil(date,zone){if(!date)return null;return Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(dateInZone(zone)+'T00:00:00Z'))/86400000)}
 function countryFlag(code){const c=String(code||'').toUpperCase();if(!/^[A-Z]{2}$/.test(c))return '';return '<img class="flag-image" src="/static/flags/'+c.toLowerCase()+'.svg" alt="'+c+' 国旗" width="24" height="18" loading="lazy">'}
