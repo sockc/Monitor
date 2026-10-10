@@ -10,13 +10,13 @@ import (
 // interactive controls against accidental removal during UI-only releases.
 func TestDashboardUIControls(t *testing.T) {
  ids := []string{
-  "nodes", "add-node", "detail-back", "detail-title", "detail-subtitle",
+  "nodes", "add-node", "overview-hint", "node-visible-count", "node-search", "node-group", "node-order", "detail-back", "detail-title", "detail-subtitle",
   "detail-status", "detail-metrics", "detail-hours", "detail-chart",
   "detail-chart-status", "detail-traffic", "detail-info",
   "detail-network-info", "detail-performance", "detail-network", "detail-system",
   "settings-nodes", "settings-limits", "settings-alerts", "settings-account",
   "show-add-node", "hide-add-node", "add-panel", "create-node",
-  "metadata-form", "metadata-name", "metadata-display", "metadata-group",
+  "metadata-form", "metadata-name", "metadata-display", "metadata-group", "metadata-location",
   "metadata-notes", "metadata-status", "manage-name", "rename-target",
   "rename-node", "revoke-node", "delete-node", "manage-status",
   "limit-name", "limit-timezone", "limit-quota", "limit-expires",
@@ -42,4 +42,6 @@ func TestDashboardUIControls(t *testing.T) {
    t.Errorf("missing detail tab %q", v)
   }
  }
+ if !strings.Contains(styleCSS, "repeat(4,minmax(0,1fr))") { t.Error("desktop dashboard must support four equal columns") }
+ if !strings.Contains(appJS, "n.location") { t.Error("dashboard is missing node location") }
 }
