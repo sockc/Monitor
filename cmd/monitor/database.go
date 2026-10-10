@@ -31,6 +31,18 @@ func openDB(path string)(*sql.DB,error){
  "CREATE TABLE IF NOT EXISTS agent_tokens(name TEXT PRIMARY KEY,hash TEXT NOT NULL)",
  "CREATE TABLE IF NOT EXISTS node_metadata(name TEXT PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '')",
  }{if _,err=db.Exec(q);err!=nil{db.Close();return nil,fmt.Errorf("schema: %w",err)}}
+ // Migration for existing installations: preserve all stored metadata and
+ // add a user-controlled geographic location without guessing from public IP.
+ rows,err:=db.Query("PRAGMA table_info(node_metadata)")
+ if err!=nil{db.Close();return nil,err}
+ hasLocation:=false
+ for rows.Next(){var cid,notnull,pk int;var name,typ string;var defaultValue sql.NullString
+  if err=rows.Scan(&cid,&name,&typ,&notnull,&defaultValue,&pk);err!=nil{rows.Close();db.Close();return nil,err}
+  if name=="location"{hasLocation=true}
+ }
+ if err=rows.Err();err!=nil{rows.Close();db.Close();return nil,err}
+ rows.Close()
+ if !hasLocation{if _,err=db.Exec("ALTER TABLE node_metadata ADD COLUMN location TEXT NOT NULL DEFAULT ''");err!=nil{db.Close();return nil,fmt.Errorf("location migration: %w",err)}}
  return db,nil
 }
 func validNodeToken(ctx context.Context,db *sql.DB,name,token,legacy string)bool{
