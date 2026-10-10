@@ -63,16 +63,16 @@ jobs:
           pattern: monitor-linux-*
           path: dist
           merge-multiple: true
-      - name: Publish V0.9.8
+      - name: Publish V0.9.9
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum monitor-linux-* > SHA256SUMS)
           HEAD_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
           if [ "$HEAD_SHA" != "${{ github.sha }}" ]; then echo "Skipping outdated run"; exit 0; fi
-          if gh release view v0.9.8 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload v0.9.8 dist/monitor-linux-* dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
-            gh release edit v0.9.8 --target "${{ github.sha }}" --repo "${{ github.repository }}"
+          if gh release view v0.9.9 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v0.9.9 dist/monitor-linux-* dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
+            gh release edit v0.9.9 --target "${{ github.sha }}" --repo "${{ github.repository }}"
             exit 0
           fi
-          gh release create v0.9.8 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.8" --notes "Random immutable node identities, display-only renaming, editable node inventory and one-command Agent reconnect. Upgrade Server; existing Agents remain compatible."
+          gh release create v0.9.9 dist/monitor-linux-* dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.9" --notes "Card boot-time stamps, hover/tap quick machine information, mobile and desktop popover styling. Server-only upgrade."
