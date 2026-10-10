@@ -88,7 +88,10 @@ $('add-node').addEventListener('click',()=>toggleAddPanel(true));
 $('show-add-node').addEventListener('click',()=>toggleAddPanel(true));
 $('hide-add-node').addEventListener('click',()=>{$('add-panel').hidden=true;$('show-add-node').focus()});
 switchSettingsTab('nodes');
-function generatedInstallCommand(url,id,token){
+function generatedInstallCommand(url,id,token,target){
+ if(target==='windows'){
+  return "$p=Join-Path $env:TEMP 'monitor-install-windows.ps1'; Invoke-WebRequest -UseBasicParsing -ErrorAction Stop -TimeoutSec 40 'https://raw.githubusercontent.com/sockc/Monitor/main/scripts/install-windows.ps1' -OutFile $p; & $p -Action Install -Server '"+url+"' -NodeName '"+id+"' -Token '"+token+"'";
+ }
  return 'curl -fsSL https://raw.githubusercontent.com/sockc/Monitor/main/scripts/install-release.sh -o monitor-install.sh && sudo env MONITOR_SERVER='+url+' MONITOR_NODE_NAME='+id+' MONITOR_AGENT_TOKEN='+token+' bash monitor-install.sh agent';
 }
 function generatedReconnectCommand(url,id,token){
@@ -104,7 +107,7 @@ $('create-node').addEventListener('submit',async e=>{
   const r=await fetch('/api/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   if(!r.ok)throw Error('HTTP '+r.status);
   const data=await r.json();
-  $('install-command').value=generatedInstallCommand(url,data.name,data.token);
+  $('install-command').value=generatedInstallCommand(url,data.name,data.token,$('install-target').value);
   $('create-status').textContent='节点已创建（随机 ID '+data.name+'），复制命令到新 VPS 安装即可。';
   await refresh()
  }catch(err){$('create-status').textContent='创建失败：'+err.message}
