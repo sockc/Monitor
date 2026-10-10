@@ -52,6 +52,14 @@ Agent 手动运行 `monitorctl install agent` 时仍可按生成的安装命令�
 若同一机器同时运行 Server 和 Agent，升级时优先备份 Server 并同步重启 Agent。
 升级前建议检查 [Releases](https://github.com/sockc/Monitor/releases)。
 
+## V0.9.9：服务器开机时间与快捷机器信息
+
+- 首页服务器卡片显示**开机日期时间**（按浏览器本地时间格式化）与已运行时长；开机时间依据 Agent 上报的采样时间和 Linux uptime 推算，精度通常为秒级，缺数据时不显示
+- 每张卡片**右上角 `!` 按钮**：电脑鼠标悬停即可查看，点击后可保持展开；手机直接点击即可查看。支持点击关闭按钮、空白处或按 Esc 关闭
+- 浮动信息面板展示已有机器资料：固定节点 ID、主机名、Linux 发行版、CPU 型号与核心数、架构、内存及磁盘容量、Swap、服务器位置、公网 IPv4/IPv6、Agent 版本、开机时间、运行时长和最后上报
+- 缺少的资料不会凭空填充，面板不会触发卡片的正常「打开详情」事件；小屏幕自动调整浮层位置与滚动区域
+- 此版本只改 Server 前端及 API 展示，沿用旧 Agent 的采样数据，无需新增安装程序或重置令牌。升级：`sudo monitorctl self-update && sudo monitorctl upgrade server`
+
 ## V0.9.8：自动节点 ID 与逐行编辑（不再因改名掉线）
 
 - 从「设置 → 节点管理 → 添加节点」创建时，Server 使用加密安全随机数分配形如 `n-8f0b12...` 的**固定内部 ID**，同时签发该节点的独立 Agent 令牌；用户无需输入节点 ID
