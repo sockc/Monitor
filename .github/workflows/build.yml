@@ -53,6 +53,31 @@ jobs:
           name: monitor-linux-${{ matrix.arch }}
           path: dist/
 
+  build-openwrt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Check OpenWrt installer syntax
+        run: sh -n scripts/install-openwrt.sh
+      - name: Build standalone OpenWrt ARM64 Agent
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w -X main.version=v0.9.16.1" -o dist/monitor-openwrt-linux-arm64 ./cmd/monitor-openwrt-agent
+          file dist/monitor-openwrt-linux-arm64
+          ls -lh dist/monitor-openwrt-linux-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monitor-openwrt-arm64
+          path: dist/
+
   build-windows:
     runs-on: ubuntu-latest
     steps:
@@ -113,7 +138,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build, build-windows, test-windows-path]
+    needs: [build, build-openwrt, build-windows, test-windows-path]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -125,12 +150,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          (cd dist && sha256sum monitor-linux-* monitor-windows-amd64.exe > SHA256SUMS)
+          (cd dist && sha256sum monitor-linux-* monitor-openwrt-linux-arm64 monitor-windows-amd64.exe > SHA256SUMS)
           HEAD_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
           if [ "$HEAD_SHA" != "${{ github.sha }}" ]; then echo "Skipping outdated run"; exit 0; fi
           if gh release view v0.9.16.1 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload v0.9.16.1 dist/monitor-linux-* dist/monitor-windows-amd64.exe dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
+            gh release upload v0.9.16.1 dist/monitor-linux-* dist/monitor-openwrt-linux-arm64 dist/monitor-windows-amd64.exe dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
             gh release edit v0.9.16.1 --target "${{ github.sha }}" --repo "${{ github.repository }}"
             exit 0
           fi
-          gh release create v0.9.16.1 dist/monitor-linux-* dist/monitor-windows-amd64.exe dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.16.1" --notes "Windows installer hotfix for PowerShell sessions without System32 in PATH; harden credential ACL before service installation. No Agent protocol changes."
+          gh release create v0.9.16.1 dist/monitor-linux-* dist/monitor-openwrt-linux-arm64 dist/monitor-windows-amd64.exe dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.16.1" --notes "Windows installer hotfix for PowerShell sessions without System32 in PATH; harden credential ACL before service installation. No Agent protocol changes."
