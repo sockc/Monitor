@@ -484,10 +484,16 @@ function renderNode(n){
  const used=(Number(period.month_rx)||0)+(Number(period.month_tx)||0),quota=(Number(period.quota_gb)||0)*1000000000,has=Boolean(period.has_samples),ratio=quota>0?used/quota*100:0,clamp=Math.min(100,Math.max(0,ratio));
  const quotaBar=quota>0&&has?'<div class="card-quota"><div class="quota-figures"><span>'+planAmountGB(used/1000000000)+' <em>/ '+planAmountGB(period.quota_gb)+'</em></span><b>'+percentLabel(ratio)+'</b></div><div class="quota-linear"><i class="'+(ratio>=100?'danger':ratio>=80?'warn':'')+'" style="width:'+clamp.toFixed(1)+'%"></i></div></div>':'';
  const days=daysUntil(period.expires_on,period.timezone),warnings=[];
- if(days!==null&&days<=7)warnings.push(days<0?'服务器已到期':'即将到期');
- if(quota>0&&has&&ratio>=80)warnings.push('流量接近额度');
- if(online&&[n.cpu,n.memory,n.disk].some(v=>Number(v)>=90))warnings.push('资源偏高');
- const alert=warnings.length?'<div class="card-alerts">'+warnings.map(w=>'<span>'+w+'</span>').join('')+'</div>':'';
+ if(!online)warnings.push('节点离线'+(n.last_seen?' · 最后在线 '+new Date(n.last_seen).toLocaleString('zh-CN'):''));
+ if(days!==null&&days<=7)warnings.push(days<0?'服务器已到期':'距离到期 '+days+' 天');
+ if(quota>0&&has&&ratio>=80)warnings.push('流量已用 '+percentLabel(ratio));
+ if(online){for(const [label,value] of [['CPU',n.cpu],['内存',n.memory],['存储',n.disk]]){if(Number.isFinite(Number(value))&&Number(value)>=90)warnings.push(label+' '+Math.round(Number(value))+'%')}}
+ const existing=new Set(warnings);
+ for(const event of lastAlertEvents.filter(e=>!e.end&&e.node===n.name)){
+  const reason=alertName(event.kind);
+  if(reason&&!existing.has(reason)){warnings.push(reason);existing.add(reason)}
+ }
+ const alert=warnings.length?'<div class="card-alerts" aria-label="节点异常提醒">'+warnings.slice(0,4).map(w=>'<span title="'+esc(w)+'">'+esc(w)+'</span>').join('')+(warnings.length>4?'<span title="'+esc(warnings.slice(4).join('；'))+'">另有 '+(warnings.length-4)+' 项</span>':'')+'</div>':'';
  const flag=countryFlag(code);
  const header='<div class="card-identity"><span class="status-dot '+(online?'on':'off')+'"></span>'+(flag?'<span class="country-flag" title="'+esc(code)+'">'+flag+'</span>':'')+'<div class="identity-text"><strong>'+name+'</strong>'+(context?'<small>'+context+'</small>':'')+'</div><span class="state-text">'+(online?'在线':'离线')+'</span></div>';
  const boot=nodeBootDate(n.boot_time);
