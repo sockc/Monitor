@@ -63,8 +63,8 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
       <label class="form-field"><span>币种</span><select id="metadata-currency"><option value="USD">USD 美元</option><option value="CNY">CNY 人民币</option><option value="EUR">EUR 欧元</option><option value="GBP">GBP 英镑</option><option value="HKD">HKD 港币</option><option value="JPY">JPY 日元</option><option value="SGD">SGD 新币</option><option value="TWD">TWD 台币</option><option value="AUD">AUD 澳元</option><option value="CAD">CAD 加元</option></select></label>
       <label class="form-field"><span>计费周期</span><select id="metadata-cycle"><option value="year">每年</option><option value="month">每月</option><option value="quarter">每季度</option><option value="one_time">一次性</option></select></label>
       <label class="form-field"><span>带宽端口（Mbps）</span><input id="metadata-port" type="number" min="0" max="1000000" step="1" placeholder="例如 1000 = 1G 口"><small>0 表示未知，不等于测速结果</small></label>
-      <label class="form-field"><span>IPv4</span><select id="metadata-ipv4"><option value="-1">未确认</option><option value="1">支持</option><option value="0">不支持</option></select></label>
-      <label class="form-field"><span>IPv6</span><select id="metadata-ipv6"><option value="-1">未确认</option><option value="1">支持</option><option value="0">不支持</option></select></label>
+      <label class="form-field"><span>IPv4</span><select id="metadata-ipv4"><option value="-1">自动检测／未知时隐藏</option><option value="1">支持</option><option value="0">不支持</option></select></label>
+      <label class="form-field"><span>IPv6</span><select id="metadata-ipv6"><option value="-1">自动检测／未知时隐藏</option><option value="1">支持</option><option value="0">不支持</option></select></label>
       <div class="form-section-title form-wide"><strong>费用与到期</strong><small>与「流量与到期」页面共用同一组数据</small></div>
       <label class="form-field"><span>本期开始日期</span><input id="metadata-start" type="date"><small>用于计算到期进度；不填写则隐藏进度条</small></label>
       <label class="form-field"><span>到期日期</span><input id="metadata-expires" type="date"></label>
