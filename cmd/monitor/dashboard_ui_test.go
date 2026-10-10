@@ -16,7 +16,7 @@ func TestDashboardUIControls(t *testing.T) {
   "detail-network-info", "detail-performance", "detail-network", "detail-system",
   "settings-nodes", "settings-limits", "settings-alerts", "settings-account",
   "show-add-node", "hide-add-node", "add-panel", "theme-select", "settings-appearance", "create-node",
-  "metadata-form", "metadata-name", "metadata-display", "metadata-group", "metadata-location",
+  "metadata-form", "metadata-name", "metadata-display", "metadata-group", "metadata-location", "metadata-provider", "metadata-country", "metadata-price", "metadata-currency", "metadata-cycle", "metadata-port", "metadata-ipv4", "metadata-ipv6", "metadata-start", "metadata-expires", "metadata-quota",
   "metadata-notes", "metadata-auto-location", "metadata-status", "manage-name", "rename-target",
   "rename-node", "revoke-node", "delete-node", "manage-status",
   "limit-name", "limit-timezone", "limit-quota", "limit-expires",
@@ -47,4 +47,5 @@ func TestDashboardUIControls(t *testing.T) {
  for _,theme:=range []string{"glass","dark","light"}{if !strings.Contains(dashboardHTML, `data-theme-choice="`+theme+`"`){t.Errorf("missing %s theme choice",theme)}}
  if !strings.Contains(appJS, "monitor-theme"){t.Error("theme persistence missing")}
  if !strings.Contains(dashboardHTML, "metadata-auto-location"){t.Error("automatic geo help text missing")}
+ for _,piece:=range []string{"metric-five","card-cumulative","capability-tags","quota-linear","countryFlag","IPv4","IPv6","planPort"}{if !strings.Contains(appJS,piece){t.Errorf("missing VPS card component: %s",piece)}}
 }
