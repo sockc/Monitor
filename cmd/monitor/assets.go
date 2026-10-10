@@ -741,6 +741,7 @@ async function persistNodeOrder(){
  try{
   const r=await fetch('/api/v1/node-ui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reorder',names})});
   if(!r.ok)throw Error(await r.text());
+  nodeMutationSequence++;
   names.forEach((name,i)=>{const n=cachedNodes.find(x=>x.name===name);if(n)n.sort_order=i+1});
   cachedNodes.sort(nodeOrder);editorSignature='';$('node-order-status').textContent='顺序已同步到服务器';
   renderNodeEditorRows(cachedNodes,true);renderOverviewNodes();
@@ -768,7 +769,8 @@ $('node-editor-list').addEventListener('drop',e=>{
 });
 $('node-editor-list').addEventListener('dragend',()=>{nodeDraggedID=''});
 
-$('node-editor-list').addEventListener('input',e=>{if(e.target.matches('input'))$('node-editor-list').dataset.dirty='true'});
+function updateNodeEditorDirty(){const area=$('node-editor-list');area.dataset.dirty=[...area.querySelectorAll('[data-edit-node]')].some(row=>row.dataset.dirty==='true')?'true':'false'}
+$('node-editor-list').addEventListener('input',e=>{if(e.target.matches('input')){const row=e.target.closest('[data-edit-node]');if(row)row.dataset.dirty='true';updateNodeEditorDirty()}});
 $('node-editor-list').addEventListener('click',async e=>{
  const btn=e.target.closest('button[data-node-action]');if(!btn)return;
  const row=btn.closest('[data-edit-node]');if(!row)return;
@@ -788,8 +790,15 @@ $('node-editor-list').addEventListener('click',async e=>{
   const payload={name:id,display_name:row.querySelector('.row-display').value.trim(),group:row.querySelector('.row-group').value.trim(),location:row.querySelector('.row-location').value.trim(),sort_order:Number(row.querySelector('.row-sort').value),notes:node.notes||''};
   try{
    const r=await fetch('/api/v1/node-metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-   if(!r.ok)throw Error(await r.text());feedback.textContent='已保存，Agent 不需要重新连接';$('node-editor-list').dataset.dirty='false';await refresh();renderNodeEditorRows(cachedNodes,true)
-  }catch(error){feedback.textContent='保存失败：'+error.message}finally{btn.disabled=false}
+   if(!r.ok)throw Error(await r.text());
+   nodeMutationSequence++;
+   Object.assign(node,{display_name:payload.display_name,group:payload.group,manual_location:payload.location,location:payload.location||node.auto_location||'',sort_order:payload.sort_order});
+   const label=row.querySelector('.edit-node-identity strong');if(label)label.textContent=payload.display_name||node.hostname||id;
+   row.dataset.dirty='false';updateNodeEditorDirty();
+   feedback.textContent='✓ 已保存至服务器';feedback.dataset.result='success';
+   cachedNodes.sort(nodeOrder);prevNames='';renderOverviewNodes();
+   if($('node-editor-list').dataset.dirty!=='true')refresh()
+  }catch(error){feedback.textContent='保存失败，修改内容已保留：'+error.message;feedback.dataset.result='error'}finally{btn.disabled=false}
   return
  }
  if(action==='rebind'){
@@ -850,7 +859,10 @@ $("metadata-form").addEventListener("submit",async e=>{
   prevNames="";await loadNodeLimits();await refresh();await refreshPeriods()
  }catch(err){$("metadata-status").textContent="保存失败："+err.message}
 });
-function updateGroupOptions(nodes){const el=$('node-group'),value=el.value,groups=[...new Set(nodes.map(n=>n.group).filter(Boolean))].sort();const next=['',...groups];if([...el.options].map(x=>x.value).join('|')!==next.join('|')){el.replaceChildren(new Option('全部分组',''),...groups.map(x=>new Option(x,x)));el.value=value}}
+let restoreGroup='';
+try{const v=JSON.parse(sessionStorage.getItem('monitor-overview-filters')||'{}');if(typeof v.search==='string')$('node-search').value=v.search.slice(0,120);if(typeof v.group==='string')restoreGroup=v.group.slice(0,80)}catch(e){}
+function saveOverviewFilters(){try{sessionStorage.setItem('monitor-overview-filters',JSON.stringify({search:$('node-search').value,group:$('node-group').value}))}catch(e){}}
+function updateGroupOptions(nodes){const el=$('node-group'),value=el.value,groups=[...new Set(nodes.map(n=>n.group).filter(Boolean))].sort();const next=['',...groups];if([...el.options].map(x=>x.value).join('|')!==next.join('|')){el.replaceChildren(new Option('全部分组',''),...groups.map(x=>new Option(x,x)));el.value=(restoreGroup&&groups.includes(restoreGroup))?restoreGroup:value;restoreGroup=''}}
 function nodeOrder(a,b){const aa=Number(a.sort_order)>0?Number(a.sort_order):10000,bb=Number(b.sort_order)>0?Number(b.sort_order):10000;return aa-bb||(a.display_name||a.hostname||a.name).localeCompare(b.display_name||b.hostname||b.name,'zh-Hans-CN')}
 function nodeHasAlert(n){
  const p=trafficPeriods[n.name]||{},quota=Number(p.quota_gb)||0,used=(Number(p.month_rx)||0)+(Number(p.month_tx)||0);
@@ -860,7 +872,7 @@ function nodeHasAlert(n){
   lastAlertEvents.some(e=>!e.end&&e.node===n.name);
 }
 function filteredNodes(nodes){const q=$('node-search').value.trim().toLowerCase(),group=$('node-group').value;return nodes.filter(n=>(!group||n.group===group)&&(!q||[n.name,n.display_name,n.group,n.location,n.os,n.notes,n.hostname].some(x=>String(x||'').toLowerCase().includes(q)))&&(nodeFilter!=='favorite'||n.favorite)&&(nodeFilter!=='alert'||nodeHasAlert(n))).sort(nodeOrder)}
-['node-search','node-group'].forEach(id=>$(id).addEventListener('input',()=>{renderOverviewNodes()}));
+['node-search','node-group'].forEach(id=>{const control=$(id);control.addEventListener('input',()=>{saveOverviewFilters();renderOverviewNodes()});control.addEventListener('change',()=>{saveOverviewFilters();renderOverviewNodes()})});
 let currentLayout='compact';let trafficPeriods={};let nodeLimitsCache={};
 const cardFieldLabels={cpu:'CPU 使用率',memory:'内存使用率',disk:'磁盘使用率',speed:'实时上传／下载',traffic:'本月流量',price:'套餐与到期',cumulative:'累计网卡流量',tags:'IPv4／IPv6 与带宽',boot:'开机时间'};
 const cardFieldDefaults={cards:['cpu','memory','disk','speed','traffic','price','cumulative','tags','boot'],compact:['cpu','memory','disk','speed','traffic'],list:['cpu','memory','disk']};
@@ -962,7 +974,7 @@ $('nodes').addEventListener('click',e=>{const b=e.target.closest('[data-group-he
 async function saveNodeFavorite(name,favorite){
  const res=await fetch('/api/v1/node-ui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'favorite',name,favorite})});
  if(!res.ok)throw Error(await res.text());
- const node=cachedNodes.find(n=>n.name===name);if(node)node.favorite=favorite;renderOverviewNodes();
+ nodeMutationSequence++;const node=cachedNodes.find(n=>n.name===name);if(node)node.favorite=favorite;renderOverviewNodes();
 }
 function dateInZone(zone){try{const d=new Intl.DateTimeFormat('en-GB',{timeZone:zone||'UTC',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=x=>d.find(y=>y.type===x).value;return get('year')+'-'+get('month')+'-'+get('day')}catch(e){return new Date().toISOString().slice(0,10)}}
 function daysUntil(date,zone){if(!date)return null;return Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(dateInZone(zone)+'T00:00:00Z'))/86400000)}
@@ -1168,7 +1180,8 @@ $('limit-name').addEventListener('change',fillLimitsForm);
 $('node-limits-form').addEventListener('submit',async e=>{e.preventDefault();const payload={name:$('limit-name').value,timezone:$('limit-timezone').value.trim(),quota_gb:Number($('limit-quota').value),expires_on:$('limit-expires').value};try{const r=await fetch('/api/v1/node-limits',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)throw Error(await r.text());$('limit-status').textContent='已保存';await loadNodeLimits();await refreshPeriods()}catch(err){$('limit-status').textContent='保存失败：'+err.message}});
 function confirmPendingEdits(){const rows=$('node-editor-list');if(rows.dataset.dirty==='true'){if(!confirm('节点资料尚未保存，确定放弃修改吗？'))return false;rows.dataset.dirty='false'}return true}
 window.addEventListener('beforeunload',e=>{if($('node-editor-list').dataset.dirty==='true'){e.preventDefault();e.returnValue=''}});
-function switchView(view){if(view!=='settings'&&!$('view-settings').hidden&&!confirmPendingEdits())return;if(view!=='overview'&&quickInfoNode)hideNodeInfo();for(const el of document.querySelectorAll('.view'))el.hidden=el.id!=='view-'+view;for(const b of document.querySelectorAll('.nav-btn')){const active=b.dataset.view===view;b.classList.toggle('selected',active);b.setAttribute('aria-current',active?'page':'false')}if(view==='statistics')drawHistory();if(view==='alerts')refreshAlertEvents();if(view==='detail')updateDetailHistory()}
+let currentView='overview',overviewScrollY=0;
+function switchView(view){if(view!=='settings'&&!$('view-settings').hidden&&!confirmPendingEdits())return;if(currentView==='overview'&&view!=='overview')overviewScrollY=window.scrollY;if(view!=='overview'&&quickInfoNode)hideNodeInfo();for(const el of document.querySelectorAll('.view'))el.hidden=el.id!=='view-'+view;for(const b of document.querySelectorAll('.nav-btn')){const active=b.dataset.view===view;b.classList.toggle('selected',active);b.setAttribute('aria-current',active?'page':'false')}if(view==='statistics')drawHistory();if(view==='alerts')refreshAlertEvents();if(view==='detail')updateDetailHistory();if(view==='overview'&&currentView!=='overview')requestAnimationFrame(()=>window.scrollTo({top:overviewScrollY,behavior:'instant'}));currentView=view}
 document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
 async function refreshAlertEvents(){const ticket=++alertFetchSequence;try{const r=await fetch('/api/v1/alerts');if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();if(ticket!==alertFetchSequence)return;renderAlerts(data.events)}catch(e){if(ticket===alertFetchSequence&&!$('view-alerts').hidden)$('alert-summary').textContent='刷新失败 · 请稍后重试'}}
 switchView('overview');async function refreshPeriods(){const ticket=++trafficFetchSequence;try{const r=await fetch('/api/v1/traffic-summary',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();if(ticket!==trafficFetchSequence)return;trafficPeriods=data;renderOverviewNodes();if(selectedNode)updateDetail()}catch(e){if(ticket===trafficFetchSequence&&$('updated').textContent.includes('加载中'))$('updated').textContent='流量数据暂不可用'}}}
