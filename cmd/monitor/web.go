@@ -12,13 +12,16 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   </div>
  </div>
  <div class="dashboard-toolbar">
-  <div class="dashboard-toolbar-head"><div class="toolbar-label"><h3>服务器列表</h3><span id="node-visible-count" class="muted">—</span></div><button type="button" class="primary-btn" id="add-node">＋ 添加</button></div>
-  <div class="overview-quick-filters" role="group" aria-label="节点快捷筛选"><button type="button" class="selected" data-node-filter="all" aria-pressed="true">全部</button><button type="button" data-node-filter="favorite" aria-pressed="false">★ 收藏</button><button type="button" data-node-filter="alert" aria-pressed="false">异常</button></div>
-  <div class="dashboard-filters" role="group" aria-label="搜索、筛选与显示方式">
-   <div class="filter-search"><input id="node-search" type="search" aria-label="搜索服务器" placeholder="搜索名称、地区、分组"></div>
-   <div class="filter-selects"><select id="node-group" aria-label="筛选服务器分组"><option value="">全部分组</option></select></div>
-   <div class="layout-switch" role="group" aria-label="服务器显示方式"><button type="button" class="layout-button" data-layout="cards">标准</button><button type="button" class="layout-button active" data-layout="compact">紧凑</button><button type="button" class="layout-button" data-layout="list">列表</button></div>
+  <div class="dashboard-toolbar-head">
+   <div class="toolbar-label"><h3>服务器列表</h3><span id="node-visible-count" class="muted">—</span></div>
+   <div class="dashboard-toolbar-actions">
+    <button type="button" class="primary-btn" id="add-node">＋ 添加</button>
+    <div class="filter-selects"><select id="node-group" aria-label="筛选服务器分组"><option value="">全部分组</option></select></div>
+    <div class="layout-switch" role="group" aria-label="服务器显示方式"><button type="button" class="layout-button" data-layout="cards">标准</button><button type="button" class="layout-button active" data-layout="compact">紧凑</button><button type="button" class="layout-button" data-layout="list">列表</button></div>
+   </div>
   </div>
+  <div class="overview-quick-filters" role="group" aria-label="节点快捷筛选"><button type="button" class="selected" data-node-filter="all" aria-pressed="true">全部</button><button type="button" data-node-filter="favorite" aria-pressed="false">★ 收藏</button><button type="button" data-node-filter="alert" aria-pressed="false">异常</button></div>
+  <div class="dashboard-filters" role="search" aria-label="搜索服务器"><div class="filter-search"><input id="node-search" type="search" aria-label="搜索服务器" placeholder="搜索名称、地区、分组"></div></div>
  </div>
  <section id="nodes" aria-label="服务器列表"></section>
  <div id="node-info-backdrop" class="node-info-backdrop" hidden></div><div id="node-quick-info" class="node-quick-info" role="region" aria-label="机器基本信息" hidden></div>
