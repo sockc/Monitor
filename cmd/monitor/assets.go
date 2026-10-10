@@ -878,13 +878,14 @@ let quickInfoNode='',quickInfoPinned=false,quickInfoTimer=0;
 function hideNodeInfo(){
  clearTimeout(quickInfoTimer);quickInfoTimer=0;
  quickInfoNode='';quickInfoPinned=false;
- const panel=$('node-quick-info');panel.hidden=true;
+ const panel=$('node-quick-info');panel.hidden=true;$('node-info-backdrop').hidden=true;
  document.querySelectorAll('.node-info-trigger[aria-expanded="true"]').forEach(b=>b.setAttribute('aria-expanded','false'));
 }
 function positionNodeInfo(){
  const panel=$('node-quick-info');if(panel.hidden||!quickInfoNode)return;
  const btn=[...document.querySelectorAll('#nodes .node-info-trigger')].find(b=>b.dataset.infoNode===quickInfoNode);
  if(!btn){hideNodeInfo();return}
+ if(window.matchMedia('(max-width:779px)').matches){panel.style.left='';panel.style.top='';return}
  const rect=btn.getBoundingClientRect(),w=panel.offsetWidth,h=panel.offsetHeight;
  const left=Math.max(10,Math.min(rect.right-w,window.innerWidth-w-10));
  const below=rect.bottom+9,above=rect.top-h-9;
@@ -895,7 +896,7 @@ function showNodeInfo(id,pinned=false){
  const n=cachedNodes.find(x=>x.name===id);if(!n)return;
  clearTimeout(quickInfoTimer);
  quickInfoNode=id;quickInfoPinned=pinned;
- const panel=$('node-quick-info');panel.innerHTML=nodeInfoContent(n);panel.hidden=false;
+ const panel=$('node-quick-info');panel.innerHTML=nodeInfoContent(n);panel.hidden=false;$('node-info-backdrop').hidden=!window.matchMedia('(max-width:779px)').matches;
  document.querySelectorAll('.node-info-trigger').forEach(b=>b.setAttribute('aria-expanded',String(b.dataset.infoNode===id)));
  positionNodeInfo();
 }
@@ -941,7 +942,33 @@ function renderNode(n){
 }
 async function alertsLoad(){try{const r=await fetch('/api/v1/alerts');if(!r.ok)return;const d=await r.json(),a=d.settings;$('a-offline').value=a.offline_seconds;$('a-cpu').value=a.cpu_threshold;$('a-memory').value=a.memory_threshold;$('a-disk').value=a.disk_threshold;$('a-duration').value=a.duration_seconds;$('a-webhook').value=a.webhook||'';renderAlerts(d.events)}catch(e){$('alerts-status').textContent=e.message}}
 function alertName(k){return ({quota_80:'月流量达到 80%',quota_90:'月流量达到 90%',quota_100:'月流量达到 100%',expiry_30:'30 天内到期',expiry_15:'15 天内到期',expiry_7:'7 天内到期',expiry_overdue:'服务器已到期'})[k]||k}
-function renderAlerts(items){const active=items.filter(e=>!e.end).length;$('alert-count').textContent=active;const root=$('alert-events');root.replaceChildren();if(!items.length){const empty=document.createElement('div');empty.className='event-empty';empty.textContent='暂无告警记录 · 服务器状态正常时无需处理';root.append(empty);return}for(const e of items.slice(0,60)){const item=document.createElement('div');item.className='event-item'+(e.end?' recovered':'');const dot=document.createElement('span');dot.className='event-dot';const content=document.createElement('div');content.className='event-content';const title=document.createElement('strong');title.textContent=alertName(e.kind);const sub=document.createElement('small');sub.textContent=e.node+' · '+new Date(e.start*1000).toLocaleString();content.append(title,sub);const status=document.createElement('span');status.className='event-status';status.textContent=e.end?'已恢复':'告警中';item.append(dot,content,status);root.append(item)}}
+let lastAlertEvents=[],alertFilter='active';
+document.querySelectorAll('[data-alert-mode]').forEach(button=>button.addEventListener('click',()=>{
+ alertFilter=button.dataset.alertMode;renderAlerts(lastAlertEvents);
+}));
+function renderAlerts(items){
+ lastAlertEvents=Array.isArray(items)?items:[];
+ const active=lastAlertEvents.filter(e=>!e.end).length;
+ const recovered=lastAlertEvents.length-active;
+ $('alert-count').textContent=active;
+ $('alert-summary').textContent=active+' 条告警中 · '+recovered+' 条已恢复';
+ document.querySelectorAll('[data-alert-mode]').forEach(b=>{const selected=b.dataset.alertMode===alertFilter;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected))});
+ const root=$('alert-events');root.replaceChildren();
+ const visible=lastAlertEvents.filter(e=>alertFilter==='all'||(alertFilter==='active'?!e.end:!!e.end));
+ if(!visible.length){const empty=document.createElement('div');empty.className='event-empty';empty.textContent=alertFilter==='active'?'目前没有未恢复的告警':alertFilter==='recovered'?'暂无已恢复记录':'暂无告警记录';root.append(empty);return}
+ for(const e of visible.slice(0,60)){
+  const item=document.createElement('div');item.className='event-item'+(e.end?' recovered':'');
+  const dot=document.createElement('span');dot.className='event-dot';
+  const content=document.createElement('div');content.className='event-content';
+  const title=document.createElement('strong');title.textContent=alertName(e.kind);
+  const sub=document.createElement('small');const n=cachedNodes.find(n=>n.name===e.node);
+  sub.textContent=(n?(n.display_name||n.hostname||n.name):e.node)+' · '+new Date(e.start*1000).toLocaleString();
+  content.append(title,sub);
+  const status=document.createElement('span');status.className='event-status';status.textContent=e.end?'已恢复':'告警中';
+  item.append(dot,content,status);root.append(item)
+ }
+}
+
 $('alerts-form').addEventListener('submit',async e=>{e.preventDefault();const payload={offline_seconds:Number($('a-offline').value),cpu_threshold:Number($('a-cpu').value),memory_threshold:Number($('a-memory').value),disk_threshold:Number($('a-disk').value),duration_seconds:Number($('a-duration').value),webhook:$('a-webhook').value.trim()};try{const r=await fetch('/api/v1/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)throw Error(await r.text());$('alerts-status').textContent='已保存'}catch(err){$('alerts-status').textContent=err.message}});
 let selectedNode=null;
 function openNode(name){selectedNode=name;switchView('detail');switchDetailTab('performance');updateDetail();window.scrollTo(0,0)}
@@ -980,6 +1007,7 @@ $('nodes').addEventListener('pointerout',e=>{
 });
 $('node-quick-info').addEventListener('pointerenter',()=>clearTimeout(quickInfoTimer));
 $('node-quick-info').addEventListener('pointerleave',scheduleHideNodeInfo);
+$('node-info-backdrop').addEventListener('click',hideNodeInfo);
 $('node-quick-info').addEventListener('click',e=>{if(e.target.closest('.node-info-close'))hideNodeInfo();e.stopPropagation()});
 document.addEventListener('click',e=>{
  if(!e.target.closest('.node-info-trigger')&&!e.target.closest('#node-quick-info'))hideNodeInfo();
