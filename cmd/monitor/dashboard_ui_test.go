@@ -15,9 +15,9 @@ func TestDashboardUIControls(t *testing.T) {
   "detail-chart-status", "detail-traffic", "detail-info",
   "detail-network-info", "detail-performance", "detail-network", "detail-system",
   "settings-nodes", "settings-limits", "settings-alerts", "settings-account",
-  "show-add-node", "hide-add-node", "add-panel", "create-node",
+  "show-add-node", "hide-add-node", "add-panel", "theme-select", "settings-appearance", "create-node",
   "metadata-form", "metadata-name", "metadata-display", "metadata-group", "metadata-location",
-  "metadata-notes", "metadata-status", "manage-name", "rename-target",
+  "metadata-notes", "metadata-auto-location", "metadata-status", "manage-name", "rename-target",
   "rename-node", "revoke-node", "delete-node", "manage-status",
   "limit-name", "limit-timezone", "limit-quota", "limit-expires",
   "node-limits-form", "limit-status", "alerts-form", "alerts-status",
@@ -32,7 +32,7 @@ func TestDashboardUIControls(t *testing.T) {
  for _, id := range ids {
   if !seen[id] { t.Errorf("missing HTML control id %q", id) }
  }
- for _, v := range []string{"nodes","limits","alerts","account"} {
+ for _, v := range []string{"nodes","limits","alerts","appearance","account"} {
   if !strings.Contains(dashboardHTML, `data-settings-tab="`+v+`"`) {
    t.Errorf("missing settings tab %q", v)
   }
@@ -44,4 +44,7 @@ func TestDashboardUIControls(t *testing.T) {
  }
  if !strings.Contains(styleCSS, "repeat(4,minmax(0,1fr))") { t.Error("desktop dashboard must support four equal columns") }
  if !strings.Contains(appJS, "n.location") { t.Error("dashboard is missing node location") }
+ for _,theme:=range []string{"glass","dark","light"}{if !strings.Contains(dashboardHTML, `data-theme-choice="`+theme+`"`){t.Errorf("missing %s theme choice",theme)}}
+ if !strings.Contains(appJS, "monitor-theme"){t.Error("theme persistence missing")}
+ if !strings.Contains(dashboardHTML, "metadata-auto-location"){t.Error("automatic geo help text missing")}
 }
