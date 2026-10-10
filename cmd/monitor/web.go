@@ -1,7 +1,7 @@
 package main
 
 const loginHTML=`<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monitor 登录</title><style>body{background:#0b1220;color:#e5ecf7;font:16px system-ui;display:grid;place-items:center;min-height:90vh}form{display:grid;gap:16px;background:#172339;padding:32px;border-radius:16px;width:min(340px,80vw)}input,button{padding:13px;border-radius:9px;border:1px solid #52617a;background:#0b1220;color:white}button{background:#2d77ca;cursor:pointer}</style><form method="post"><h2>Monitor 管理登录</h2><input type="password" name="token" placeholder="管理员令牌" required autocomplete="current-password"><button>登录</button></form></html>`
-const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monitor</title><link rel="stylesheet" href="/static/style.css"></head><body><header><h2>◉ Monitor</h2><nav class="top-nav"><button type="button" class="nav-btn selected" data-view="overview">概览</button><button type="button" class="nav-btn" data-view="statistics">统计</button><button type="button" class="nav-btn" data-view="alerts">告警</button><button type="button" class="nav-btn" data-view="settings">设置</button></nav><form method="post" action="/logout"><button>退出</button></form></header><main><section class="view" id="view-overview">
+const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monitor</title><link rel="stylesheet" href="/static/style.css"></head><body><header><h2>◉ Monitor</h2><nav class="top-nav"><button type="button" class="nav-btn selected" data-view="overview">概览</button><button type="button" class="nav-btn" data-view="statistics">统计</button><button type="button" class="nav-btn" data-view="alerts">告警</button><button type="button" class="nav-btn" data-view="settings">设置</button></nav><div class="header-tools"><label class="theme-switch" for="theme-select"><span aria-hidden="true">✦</span><select id="theme-select" aria-label="页面主题"><option value="glass">梦幻玻璃</option><option value="dark">经典深色</option><option value="light">简约浅色</option></select></label><form method="post" action="/logout"><button class="logout-btn">退出</button></form></div></header><main><section class="view" id="view-overview">
  <div class="page-heading dashboard-heading"><div><span class="eyebrow">MONITOR · DASHBOARD</span><h1>服务器概览</h1><p id="overview-hint" class="muted">节点实时状态与资源使用</p></div><div class="dashboard-updated"><span class="refresh-dot"></span><span id="updated">加载中</span></div></div>
  <div class="stats summary-strip">
   <div><span class="summary-icon">▣</span><div><small>总节点</small><strong id="total">—</strong></div></div>
@@ -45,6 +45,7 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
    <button type="button" class="settings-tab selected" data-settings-tab="nodes" role="tab" aria-selected="true" aria-controls="settings-nodes"><span class="menu-icon">▣</span><span class="menu-copy"><strong>节点管理</strong><small>名称、分组、添加和删除</small></span></button>
    <button type="button" class="settings-tab" data-settings-tab="limits" role="tab" aria-selected="false" aria-controls="settings-limits"><span class="menu-icon">◷</span><span class="menu-copy"><strong>流量与到期</strong><small>额度、时区和提醒</small></span></button>
    <button type="button" class="settings-tab" data-settings-tab="alerts" role="tab" aria-selected="false" aria-controls="settings-alerts"><span class="menu-icon">♢</span><span class="menu-copy"><strong>告警规则</strong><small>阈值、离线和通知</small></span></button>
+   <button type="button" class="settings-tab" data-settings-tab="appearance" role="tab" aria-selected="false" aria-controls="settings-appearance"><span class="menu-icon">☼</span><span class="menu-copy"><strong>外观主题</strong><small>玻璃、深色、浅色</small></span></button>
    <button type="button" class="settings-tab" data-settings-tab="account" role="tab" aria-selected="false" aria-controls="settings-account"><span class="menu-icon">◈</span><span class="menu-copy"><strong>账户安全</strong><small>管理员密码</small></span></button>
   </nav>
   <div class="settings-content">
@@ -54,7 +55,7 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
      <form id="metadata-form" class="settings-form">
       <label class="form-field form-wide"><span>选择服务器</span><select id="metadata-name" aria-label="选择服务器"></select></label>
       <label class="form-field"><span>显示名称</span><input id="metadata-display" maxlength="60" placeholder="例如 香港主服务器"></label>
-      <label class="form-field"><span>所属分组</span><input id="metadata-group" maxlength="40" placeholder="例如 香港"></label><label class="form-field"><span>服务器位置</span><input id="metadata-location" maxlength="80" placeholder="例如 香港 · 湾仔 / 美国 · 洛杉矶" autocomplete="off"><small>自行填写机房所在国家、城市，不根据 IP 猜测</small></label>
+      <label class="form-field"><span>所属分组</span><input id="metadata-group" maxlength="40" placeholder="例如 香港"></label><label class="form-field"><span>服务器位置（手动覆盖）</span><input id="metadata-location" maxlength="80" placeholder="留空使用 IP 自动定位" autocomplete="off"><small id="metadata-auto-location">等待 Agent 获取公网 IP 位置</small></label>
       <label class="form-field form-wide"><span>备注信息</span><textarea id="metadata-notes" maxlength="500" rows="3" placeholder="可选：用途、配置说明或运营商"></textarea></label>
       <div class="form-actions"><button type="submit" class="primary-btn">保存基本资料</button><span id="metadata-status" class="form-feedback" role="status"></span></div>
      </form>
@@ -95,6 +96,17 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
       <label class="form-field form-wide"><span>Webhook 通知地址</span><input id="a-webhook" type="url" placeholder="https://example.com/webhook"><small>可选，仅允许 HTTPS 地址</small></label>
       <div class="form-actions"><button type="submit" class="primary-btn">保存告警规则</button><span id="alerts-status" class="form-feedback" role="status"></span></div>
      </form>
+    </section>
+   </div>
+   <div class="settings-pane" id="settings-appearance" role="tabpanel" hidden>
+    <div class="settings-pane-heading"><div><h2>外观主题</h2><p class="muted">主题只影响当前浏览器，不修改服务器运行配置</p></div></div>
+    <section class="settings-card"><div class="settings-card-heading"><h3>选择面板外观</h3><p class="muted">默认使用参考图中的柔和背景和磨砂玻璃卡片风格</p></div>
+      <div class="theme-options" role="group" aria-label="选择监控面板主题">
+       <button class="theme-choice" type="button" data-theme-choice="glass"><span class="theme-thumb theme-thumb-glass"></span><strong>梦幻玻璃</strong><small>默认 · 柔和背景与透明卡片</small></button>
+       <button class="theme-choice" type="button" data-theme-choice="dark"><span class="theme-thumb theme-thumb-dark"></span><strong>经典深色</strong><small>高对比度的深色监控面板</small></button>
+       <button class="theme-choice" type="button" data-theme-choice="light"><span class="theme-thumb theme-thumb-light"></span><strong>简约浅色</strong><small>清爽亮色，适合白天使用</small></button>
+      </div>
+      <p id="theme-status" class="field-hint" role="status">主题选择将保存在当前浏览器中。</p>
     </section>
    </div>
    <div class="settings-pane" id="settings-account" role="tabpanel" hidden>
