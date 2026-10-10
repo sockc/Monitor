@@ -94,16 +94,16 @@ jobs:
           pattern: monitor-*
           path: dist
           merge-multiple: true
-      - name: Publish V0.9.16
+      - name: Publish V0.9.16.1
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum monitor-linux-* monitor-windows-amd64.exe > SHA256SUMS)
           HEAD_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
           if [ "$HEAD_SHA" != "${{ github.sha }}" ]; then echo "Skipping outdated run"; exit 0; fi
-          if gh release view v0.9.16 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload v0.9.16 dist/monitor-linux-* dist/monitor-windows-amd64.exe dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
-            gh release edit v0.9.16 --target "${{ github.sha }}" --repo "${{ github.repository }}"
+          if gh release view v0.9.16.1 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v0.9.16.1 dist/monitor-linux-* dist/monitor-windows-amd64.exe dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
+            gh release edit v0.9.16.1 --target "${{ github.sha }}" --repo "${{ github.repository }}"
             exit 0
           fi
-          gh release create v0.9.16 dist/monitor-linux-* dist/monitor-windows-amd64.exe dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.16" --notes "Windows AMD64 Agent with native CPU/memory/disk metrics, network totals, SCM service installation and SHA256-verified PowerShell installer. Linux Server remains backward-compatible."
+          gh release create v0.9.16.1 dist/monitor-linux-* dist/monitor-windows-amd64.exe dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.16.1" --notes "Windows installer hotfix for PowerShell sessions without System32 in PATH; harden credential ACL before service installation. No Agent protocol changes."
