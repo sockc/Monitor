@@ -2,12 +2,14 @@ package main
 
 const loginHTML=`<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monitor 登录</title><style>body{background:#0b1220;color:#e5ecf7;font:16px system-ui;display:grid;place-items:center;min-height:90vh}form{display:grid;gap:16px;background:#172339;padding:32px;border-radius:16px;width:min(340px,80vw)}input,button{padding:13px;border-radius:9px;border:1px solid #52617a;background:#0b1220;color:white}button{background:#2d77ca;cursor:pointer}</style><form method="post"><h2>Monitor 管理登录</h2><input type="password" name="token" placeholder="管理员令牌" required autocomplete="current-password"><button>登录</button></form></html>`
 const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monitor</title><link rel="stylesheet" href="/static/style.css"></head><body><header><h2>◉ Monitor</h2><nav class="top-nav"><button type="button" class="nav-btn selected" data-view="overview">概览</button><button type="button" class="nav-btn" data-view="statistics">统计</button><button type="button" class="nav-btn" data-view="alerts">告警</button><button type="button" class="nav-btn" data-view="settings">设置</button></nav><div class="header-tools"><label class="theme-switch" for="theme-select"><span aria-hidden="true">✦</span><select id="theme-select" aria-label="页面主题"><option value="glass">梦幻玻璃</option><option value="dark">经典深色</option><option value="light">简约浅色</option></select></label><form method="post" action="/logout"><button class="logout-btn">退出</button></form></div></header><main><section class="view" id="view-overview">
- <div class="page-heading dashboard-heading"><div><span class="eyebrow">MONITOR · DASHBOARD</span><h1>服务器概览</h1><p id="overview-hint" class="muted">节点实时状态与资源使用</p></div><div class="dashboard-updated"><span class="refresh-dot"></span><span id="updated">加载中</span></div></div>
- <div class="stats summary-strip">
-  <div><span class="summary-icon">▣</span><div><small>总节点</small><strong id="total">—</strong></div></div>
-  <div><span class="summary-icon">●</span><div><small>在线节点</small><strong id="online">—</strong></div></div>
-  <div><span class="summary-icon">◌</span><div><small>离线节点</small><strong id="offline">—</strong></div></div>
-  <div><span class="summary-icon">◇</span><div><small>当前告警</small><strong id="alert-count">—</strong><button type="button" id="overview-alert-filter" class="alert-filter-shortcut" title="筛选有异常的服务器">查看</button></div></div>
+ <div class="overview-headline">
+  <div class="page-heading dashboard-heading"><div><h1>服务器概览</h1><p id="overview-hint" class="muted">节点实时状态与资源使用</p></div><div class="dashboard-updated"><span class="refresh-dot"></span><span id="updated">加载中</span></div></div>
+  <div class="stats summary-strip" aria-label="节点状态汇总">
+   <div><span class="summary-icon">▣</span><div><small>总节点</small><strong id="total">—</strong></div></div>
+   <div><span class="summary-icon">●</span><div><small>在线节点</small><strong id="online">—</strong></div></div>
+   <div><span class="summary-icon">◌</span><div><small>离线节点</small><strong id="offline">—</strong></div></div>
+   <div><span class="summary-icon">◇</span><div><small>当前告警</small><strong id="alert-count">—</strong><button type="button" id="overview-alert-filter" class="alert-filter-shortcut" title="筛选有异常的服务器">查看</button></div></div>
+  </div>
  </div>
  <div class="dashboard-toolbar">
   <div class="dashboard-toolbar-head"><div class="toolbar-label"><h3>服务器列表</h3><span id="node-visible-count" class="muted">—</span></div><button type="button" class="primary-btn" id="add-node">＋ 添加</button></div>
