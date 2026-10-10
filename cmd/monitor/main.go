@@ -24,7 +24,7 @@ import (
  "time"
 )
 
-const monitorVersion="v0.9.5"
+const monitorVersion="v0.9.6"
 type Sample struct {
  Name string `json:"name"`
  Hostname string `json:"hostname"`
