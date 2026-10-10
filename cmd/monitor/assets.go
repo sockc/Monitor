@@ -602,7 +602,7 @@ function capacity(n){return n>0?formatBytes(n):'—'}
 function hardware(n){return '<div class="hardware-line"><span>'+((n.cpu_cores>0?n.cpu_cores+'C':'—')+' CPU')+'</span><span>内存 '+capacity(n.memory_total)+'</span><span>磁盘 '+capacity(n.disk_total)+'</span></div>'}
 function resourceMetric(label,val,used,total){const v=Math.min(100,Math.max(0,Number(val)||0)),status=v>=90?'critical':v>=75?'hot':'',quantity=total>0?capacity(used)+' / '+capacity(total):'';return '<div class="resource-line"><div class="metric-row"><span>'+label+'</span><span class="resource-numbers">'+(quantity?'<small>'+quantity+'</small>':'')+'<b>'+Math.round(v)+'%</b></span></div><div class="bar"><div class="fill '+status+'" style="width:'+v+'%"></div></div></div>'}
 function resourceWithCapacity(label,pct,used,total){return resourceMetric(label,pct,used,total)}
-function renderOverviewNodes(){const visible=filteredNodes(cachedNodes);$('nodes').innerHTML=visible.map(renderNode).join('')||'<div class="dashboard-empty"><strong>没有匹配的服务器</strong><span>试试修改搜索关键词或切换分组</span></div>';$('node-visible-count').textContent='显示 '+visible.length+' / '+cachedNodes.length+' 台'}
+function renderOverviewNodes(){const visible=filteredNodes(cachedNodes);$('nodes').innerHTML=visible.map(renderNode).join('')||'<div class="dashboard-empty"><strong>没有匹配的服务器</strong><span>试试修改搜索关键词或切换分组</span></div>';$('node-visible-count').textContent='显示 '+visible.length+' / '+cachedNodes.length+' 台';if(quickInfoNode){if(visible.some(n=>n.name===quickInfoNode))showNodeInfo(quickInfoNode,quickInfoPinned);else hideNodeInfo()}}
 
 function dateInZone(zone){try{const d=new Intl.DateTimeFormat('en-GB',{timeZone:zone||'UTC',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=x=>d.find(y=>y.type===x).value;return get('year')+'-'+get('month')+'-'+get('day')}catch(e){return new Date().toISOString().slice(0,10)}}
 function daysUntil(date,zone){if(!date)return null;return Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(dateInZone(zone)+'T00:00:00Z'))/86400000)}
@@ -614,6 +614,67 @@ function planPort(mbps){const n=Number(mbps)||0;if(n<=0)return '';return n>=1000
 function expiryInfo(p,profile){if(!p||!p.expires_on)return '';const d=daysUntil(p.expires_on,p.timezone);if(d===null)return '';const left=d<0?'已到期 '+(-d)+' 天':d===0?'今天到期':'剩余 '+d+' 天';let bar='';if(profile.period_start){const start=Date.parse(profile.period_start+'T00:00:00Z'),end=Date.parse(p.expires_on+'T00:00:00Z'),now=Date.parse(dateInZone(p.timezone)+'T00:00:00Z');if(Number.isFinite(start)&&Number.isFinite(end)&&end>start){const pct=Math.max(0,Math.min(100,(now-start)/(end-start)*100));bar='<span class="expiry-progress" title="本期已过 '+pct.toFixed(0)+'%"><i style="width:'+pct.toFixed(1)+'%"></i></span>'}}return '<span class="plan-remaining">'+left+'</span>'+bar}
 function metricFive(label,value,percentage,kind){const isPercent=kind==='percent',pct=Math.max(0,Math.min(100,Number(percentage)||0));return '<div class="five-metric"><small>'+label+'</small><strong>'+value+'</strong>'+(isPercent?'<span class="five-track"><i class="'+(pct>=90?'critical':pct>=75?'warm':'')+'" style="width:'+pct+'%"></i></span>':'<span class="five-track ghost"></span>')+'</div>'}
 function ipCapability(label,manualValue,publicIP,cls){const manual=Number(manualValue);if(manual===0||(manual!==1&&!publicIP))return '';const hint=publicIP?'出站公网地址：'+esc(publicIP):'手动标注支持；尚未获取出站地址';return '<span class="plan-tag '+cls+'" title="'+hint+'">'+label+'</span>'}
+function nodeBootDate(value,withSeconds=false){
+ if(!value)return '';
+ const d=new Date(value);
+ if(!Number.isFinite(d.getTime()))return '';
+ const fmt={year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false};
+ if(withSeconds)fmt.second='2-digit';
+ return new Intl.DateTimeFormat('zh-CN',fmt).format(d).replace(/\\//g,'-');
+}
+function nodeUptime(seconds){
+ const n=Number(seconds)||0;if(n<=0)return '';
+ const days=Math.floor(n/86400),hours=Math.floor(n%86400/3600),mins=Math.floor(n%3600/60);
+ return days?days+'天 '+hours+'小时':hours?hours+'小时 '+mins+'分':mins+'分钟';
+}
+function nodeInfoContent(n){
+ const rows=[];
+ const add=(label,value)=>{if(value!==null&&value!==undefined&&String(value)!=='')rows.push('<div class="info-line"><dt>'+esc(label)+'</dt><dd>'+esc(value)+'</dd></div>')};
+ add('固定节点 ID',n.name);
+ add('主机名称',n.hostname);
+ add('系统发行版',n.os);
+ add('系统架构',n.arch);
+ const cpu=[n.cpu_model,n.cpu_cores>0?n.cpu_cores+' 核':''].filter(Boolean).join(' · ');
+ add('CPU',cpu);
+ if(n.memory_total>0)add('物理内存',formatBytes(n.memory_total));
+ if(n.disk_total>0)add('系统磁盘',formatBytes(n.disk_total));
+ if(n.swap_total>0)add('Swap',formatBytes(n.swap_used)+' / '+formatBytes(n.swap_total));
+ add('服务器位置',n.location);
+ add('服务商',n.profile?.provider);
+ add('公网 IPv4（出站）',n.public_ipv4);
+ add('公网 IPv6（出站）',n.public_ipv6);
+ add('开机时间（估算，本地）',nodeBootDate(n.boot_time,true));
+ add('已运行',nodeUptime(n.uptime));
+ add('Agent 版本',n.agent_version);
+ if(n.last_seen){const d=nodeBootDate(n.last_seen,true);add('最后上报（本地）',d)}
+ return '<div class="node-info-heading"><div><strong>'+esc(n.display_name||n.name)+'</strong><small>机器基本信息 · 不影响节点连接</small></div><button class="node-info-close" type="button" aria-label="关闭机器信息">×</button></div><dl class="node-info-grid">'+rows.join('')+'</dl><p class="node-info-foot">开机时间由 Agent 的系统运行时长推算；时间按当前浏览器所在时区显示。</p>';
+}
+let quickInfoNode='',quickInfoPinned=false,quickInfoTimer=0;
+function hideNodeInfo(){
+ clearTimeout(quickInfoTimer);quickInfoTimer=0;
+ quickInfoNode='';quickInfoPinned=false;
+ const panel=$('node-quick-info');panel.hidden=true;
+ document.querySelectorAll('.node-info-trigger[aria-expanded="true"]').forEach(b=>b.setAttribute('aria-expanded','false'));
+}
+function positionNodeInfo(){
+ const panel=$('node-quick-info');if(panel.hidden||!quickInfoNode)return;
+ const btn=[...document.querySelectorAll('#nodes .node-info-trigger')].find(b=>b.dataset.infoNode===quickInfoNode);
+ if(!btn){hideNodeInfo();return}
+ const rect=btn.getBoundingClientRect(),w=panel.offsetWidth,h=panel.offsetHeight;
+ const left=Math.max(10,Math.min(rect.right-w,window.innerWidth-w-10));
+ const below=rect.bottom+9,above=rect.top-h-9;
+ const top=below+h<=window.innerHeight-10?below:Math.max(10,above);
+ panel.style.left=Math.round(left)+'px';panel.style.top=Math.round(top)+'px';
+}
+function showNodeInfo(id,pinned=false){
+ const n=cachedNodes.find(x=>x.name===id);if(!n)return;
+ clearTimeout(quickInfoTimer);
+ quickInfoNode=id;quickInfoPinned=pinned;
+ const panel=$('node-quick-info');panel.innerHTML=nodeInfoContent(n);panel.hidden=false;
+ document.querySelectorAll('.node-info-trigger').forEach(b=>b.setAttribute('aria-expanded',String(b.dataset.infoNode===id)));
+ positionNodeInfo();
+}
+function scheduleHideNodeInfo(){clearTimeout(quickInfoTimer);if(!quickInfoPinned)quickInfoTimer=setTimeout(hideNodeInfo,180)}
 function renderNode(n){
  const name=esc(n.display_name||n.name),id=esc(n.name),online=Boolean(n.online),profile=n.profile||{},period=trafficPeriods[n.name]||{},code=n.country_code||'';
  const loc=n.location||'',provider=profile.provider||'';
@@ -636,7 +697,11 @@ function renderNode(n){
  const alert=warnings.length?'<div class="card-alerts">'+warnings.map(w=>'<span>'+w+'</span>').join('')+'</div>':'';
  const flag=countryFlag(code);
  const header='<div class="card-identity"><span class="status-dot '+(online?'on':'off')+'"></span>'+(flag?'<span class="country-flag" title="'+esc(code)+'">'+flag+'</span>':'')+'<div class="identity-text"><strong>'+name+'</strong>'+(context?'<small>'+context+'</small>':'')+'</div><span class="state-text">'+(online?'在线':'离线')+'</span></div>';
- return '<article role="button" tabindex="0" data-node="'+id+'" class="node dashboard-node glass-node '+(online?'':'node-offline')+'" aria-label="查看 '+name+' 详情">'+header+priceRow+metrics+cumulative+labels+quotaBar+alert+'</article>'
+ const boot=nodeBootDate(n.boot_time);
+ const bootLine=boot?'<div class="node-boot-line"><span>开机 <time datetime="'+esc(n.boot_time)+'">'+esc(boot)+'</time></span>'+(nodeUptime(n.uptime)?'<span>'+esc(nodeUptime(n.uptime))+'</span>':'')+'</div>':'';
+ const infoButton='<button type="button" class="node-info-trigger" data-info-node="'+id+'" aria-label="查看 '+name+' 的机器基本信息" aria-controls="node-quick-info" aria-expanded="false" title="机器基本信息">!</button>';
+
+ return '<article role="button" tabindex="0" data-node="'+id+'" class="node dashboard-node glass-node '+(online?'':'node-offline')+'" aria-label="查看 '+name+' 详情">'+infoButton+header+priceRow+metrics+cumulative+labels+quotaBar+bootLine+alert+'</article>'
 }
 
 async function alertsLoad(){try{const r=await fetch('/api/v1/alerts');if(!r.ok)return;const d=await r.json(),a=d.settings;$('a-offline').value=a.offline_seconds;$('a-cpu').value=a.cpu_threshold;$('a-memory').value=a.memory_threshold;$('a-disk').value=a.disk_threshold;$('a-duration').value=a.duration_seconds;$('a-webhook').value=a.webhook||'';renderAlerts(d.events)}catch(e){$('alerts-status').textContent=e.message}}
@@ -657,8 +722,37 @@ async function updateDetailHistory(){if(!selectedNode)return;const name=selected
 if(points.length>0){const min=points[0].time,max=Math.max(min+1,points[points.length-1].time);['cpu','memory','disk'].forEach((key,k)=>{ctx.beginPath();ctx.strokeStyle=colors[k];ctx.lineWidth=2;points.forEach((p,i)=>{const x=42+(p.time-min)/(max-min)*842,y=18+(100-Math.max(0,Math.min(100,p[key])))/100*196;if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.stroke()})}
 $('detail-chart-status').textContent='CPU（蓝） · 内存（紫） · 磁盘（青） · '+points.length+' 个区间';
 $('detail-traffic').textContent='接收 ↓ '+formatBytes(traffic.rx)+'　发送 ↑ '+formatBytes(traffic.tx)+'（采样估算）'}catch(e){$('detail-chart-status').textContent='历史数据加载失败：'+e.message}}
-$('nodes').addEventListener('click',e=>{const card=e.target.closest('[data-node]');if(card)openNode(card.dataset.node)});
-$('nodes').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const card=e.target.closest('[data-node]');if(card){e.preventDefault();openNode(card.dataset.node)}}});
+$('nodes').addEventListener('click',e=>{
+ const info=e.target.closest('.node-info-trigger');
+ if(info){
+  e.stopPropagation();const id=info.dataset.infoNode;
+  if(quickInfoNode===id&&quickInfoPinned)hideNodeInfo();else showNodeInfo(id,true);
+  return;
+ }
+ const card=e.target.closest('[data-node]');if(card){hideNodeInfo();openNode(card.dataset.node)}
+});
+$('nodes').addEventListener('keydown',e=>{
+ if(e.target.closest('.node-info-trigger'))return;
+ if(e.key==='Enter'||e.key===' '){const card=e.target.closest('[data-node]');if(card){e.preventDefault();hideNodeInfo();openNode(card.dataset.node)}}
+});
+$('nodes').addEventListener('pointerover',e=>{
+ const button=e.target.closest('.node-info-trigger');
+ if(button&&e.pointerType==='mouse'&&!quickInfoPinned)showNodeInfo(button.dataset.infoNode,false);
+});
+$('nodes').addEventListener('pointerout',e=>{
+ const button=e.target.closest('.node-info-trigger');
+ if(button&&!button.contains(e.relatedTarget))scheduleHideNodeInfo();
+});
+$('node-quick-info').addEventListener('pointerenter',()=>clearTimeout(quickInfoTimer));
+$('node-quick-info').addEventListener('pointerleave',scheduleHideNodeInfo);
+$('node-quick-info').addEventListener('click',e=>{if(e.target.closest('.node-info-close'))hideNodeInfo();e.stopPropagation()});
+document.addEventListener('click',e=>{
+ if(!e.target.closest('.node-info-trigger')&&!e.target.closest('#node-quick-info'))hideNodeInfo();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&quickInfoNode)hideNodeInfo()});
+window.addEventListener('scroll',()=>{if(quickInfoNode)positionNodeInfo()},{passive:true,capture:true});
+window.addEventListener('resize',()=>{if(quickInfoNode)positionNodeInfo()});
+
 function switchDetailTab(tab){document.querySelectorAll('.detail-tab').forEach(b=>{const on=b.dataset.detailTab===tab;b.classList.toggle('selected',on);b.setAttribute('aria-selected',String(on));b.tabIndex=0});document.querySelectorAll('.detail-pane').forEach(p=>p.hidden=p.id!=='detail-'+tab)}
 document.querySelectorAll('.detail-tab').forEach(b=>b.addEventListener('click',()=>switchDetailTab(b.dataset.detailTab)));
 switchDetailTab('performance');
