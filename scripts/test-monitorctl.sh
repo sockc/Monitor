@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-bash -n scripts/monitorctl scripts/install-release.sh scripts/upgrade.sh scripts/backup.sh
+bash -n scripts/monitorctl scripts/install-release.sh scripts/upgrade.sh scripts/backup.sh scripts/rebind-agent.sh
 help_output="$(bash scripts/monitorctl --help)"
 [[ "$help_output" == *"install server"* ]]
 [[ "$help_output" == *"install agent"* ]]
@@ -26,4 +26,6 @@ fi
 grep -q 'MONITOR_AGENT_TOKEN=%s' scripts/install-release.sh
 grep -q 'MONITOR_ADMIN_TOKEN=%s' scripts/install-release.sh
 grep -q 'MONITOR_LISTEN=127.0.0.1:%s' scripts/install-release.sh
+grep -q "systemctl restart monitor-agent.service" scripts/rebind-agent.sh
+! grep -q "rm -rf /var/lib/monitor" scripts/rebind-agent.sh
 echo "monitorctl command and installation smoke checks passed"
