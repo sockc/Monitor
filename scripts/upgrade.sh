@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ "${EUID}" -eq 0 ]] || { echo "root required";exit 1; }
 MODE="${1:-}";[[ "$MODE" == server || "$MODE" == agent ]] || { echo "Usage: sudo bash upgrade.sh server|agent";exit 1; }
-VERSION="${MONITOR_VERSION:-v0.9.9}"
+VERSION="${MONITOR_VERSION:-v0.9.10}"
 ARCH="$(uname -m)";case "$ARCH" in x86_64)ARCH=amd64;;aarch64|arm64)ARCH=arm64;;*)exit 1;;esac
 ROOT="https://github.com/sockc/Monitor/releases/download/$VERSION"
 T="$(mktemp -d)";trap 'rm -rf "$T"' EXIT
