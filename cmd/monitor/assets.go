@@ -598,6 +598,8 @@ html[data-theme=dark] #view-overview .node-quick-info .node-info-close{backgroun
 #view-settings #node-order-status{margin:0 0 8px;font-size:11px}
 @media(max-width:800px){#view-settings .card-fields-options{grid-template-columns:repeat(2,minmax(0,1fr))}#view-settings .order-move-controls button{width:29px;min-width:29px;height:32px}#view-settings .order-move-controls .node-drag-handle{display:none!important}}
 @media(max-width:420px){#view-overview .overview-quick-filters button{flex:1;padding:7px 8px}#view-settings .card-fields-options{grid-template-columns:1fr 1fr}#view-settings .card-fields-options label{font-size:11px;padding:8px 7px}#view-overview .glass-node .node-favorite-trigger{right:40px;top:8px;width:28px;height:28px;font-size:19px}#view-overview .node-group-heading{font-size:12px}#view-overview .alert-filter-shortcut{font-size:9px}}
+
+#view-overview .server-grid[data-layout=compact] .glass-node .metric-five,#view-overview .server-grid[data-layout=cards] .glass-node .metric-five{grid-template-columns:repeat(var(--metric-count,5),minmax(0,1fr))!important}
 `
 const appJS=`const $=x=>document.getElementById(x);
 const validThemes=['glass','dark','light'];
@@ -1043,7 +1045,7 @@ function renderNode(n){
  const expiration=expiryInfo(period,profile);
  const priceRow=price||expiration?'<div class="card-plan">'+(price?'<span class="plan-price">'+price+'</span>':'')+expiration+'</div>':'';
  const chosen=['cpu','memory','disk','speed'].filter(key=>cardFieldOn(currentLayout,key));
- const metrics='<div class="metric-five" style="grid-template-columns:repeat('+Math.max(1,chosen.length+(chosen.includes('speed')?1:0))+',minmax(0,1fr))">'+(chosen.includes('cpu')?metricFive('CPU',online?Number(n.cpu).toFixed(1)+'%':'—',n.cpu,'percent'):'')+(chosen.includes('memory')?metricFive('内存',online?Number(n.memory).toFixed(1)+'%':'—',n.memory,'percent'):'')+(chosen.includes('disk')?metricFive('存储',online?Number(n.disk).toFixed(1)+'%':'—',n.disk,'percent'):'')+(chosen.includes('speed')?metricFive('上传',online?compactSpeed(n.tx_speed):'—',0,'speed')+metricFive('下载',online?compactSpeed(n.rx_speed):'—',0,'speed'):'')+'</div>';
+ const metrics='<div class="metric-five" style="--metric-count:'+Math.max(1,chosen.length+(chosen.includes('speed')?1:0))+'">'+(chosen.includes('cpu')?metricFive('CPU',online?Number(n.cpu).toFixed(1)+'%':'—',n.cpu,'percent'):'')+(chosen.includes('memory')?metricFive('内存',online?Number(n.memory).toFixed(1)+'%':'—',n.memory,'percent'):'')+(chosen.includes('disk')?metricFive('存储',online?Number(n.disk).toFixed(1)+'%':'—',n.disk,'percent'):'')+(chosen.includes('speed')?metricFive('上传',online?compactSpeed(n.tx_speed):'—',0,'speed')+metricFive('下载',online?compactSpeed(n.rx_speed):'—',0,'speed'):'')+'</div>';
  const cumulative='<div class="card-cumulative"><span>↑ 累计上传 <b>'+binaryAmount(n.tx_bytes||0)+'</b></span><span>↓ 累计下载 <b>'+binaryAmount(n.rx_bytes||0)+'</b></span></div>';
  const port=planPort(profile.port_mbps);
  const tags=(port?'<span class="plan-tag tag-bandwidth">'+port+'</span>':'')+(Number(period.quota_gb)>0?'<span class="plan-tag tag-quota">'+planAmountGB(period.quota_gb)+'/月</span>':'')+ipCapability('IPv4',profile.has_ipv4??-1,n.public_ipv4||'','tag-ip4')+ipCapability('IPv6',profile.has_ipv6??-1,n.public_ipv6||'','tag-ip6');
