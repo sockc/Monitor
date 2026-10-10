@@ -27,7 +27,7 @@ func runAgent(server,name,token string,interval time.Duration){
   if geoEnabled&&time.Now().After(nextGeo){
    if discovered,err:=lookupAgentGeo(client);err==nil{geo=discovered;nextGeo=time.Now().Add(12*time.Hour)}else{nextGeo=time.Now().Add(time.Hour);log.Printf("auto location: %v",err)}
   }
-  sample,next:=collect(name,prev);prev=next;sample.AgentVersion=monitorVersion;sample.PublicIP=geo.IP;sample.AutoLocation=geo.Location
+  sample,next:=collect(name,prev);prev=next;sample.AgentVersion=monitorVersion;sample.PublicIP=geo.IP;sample.AutoLocation=geo.Location;sample.CountryCode=geo.CountryCode
   b,e:=json.Marshal(sample);if e!=nil{return}
   ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
   req,e:=http.NewRequestWithContext(ctx,"POST",strings.TrimRight(server,"/")+"/api/v1/ingest",bytes.NewReader(b));if e!=nil{log.Print(e);return}
@@ -39,7 +39,7 @@ func runAgent(server,name,token string,interval time.Duration){
  ticker:=time.NewTicker(interval);defer ticker.Stop();for range ticker.C{send()}
 }
 
-type agentGeo struct{IP string;Location string}
+type agentGeo struct{IP string;Location string;CountryCode string}
 // The agent reports its own egress address, never the reverse proxy IP.
 // Keep provider use infrequent and optional, and do not block monitoring for
 // longer than the HTTP timeout when the lookup fails.
@@ -49,7 +49,7 @@ func lookupAgentGeo(c *http.Client)(agentGeo,error){
  req.Header.Set("User-Agent","Monitor-Agent/"+monitorVersion)
  resp,err:=c.Do(req);if err!=nil{return agentGeo{},err};defer resp.Body.Close()
  if resp.StatusCode!=200{return agentGeo{},fmt.Errorf("location API returned HTTP %d",resp.StatusCode)}
- var result struct{Success bool `json:"success"`;IP string `json:"ip"`;Country string `json:"country"`;City string `json:"city"`;Region string `json:"region"`}
+ var result struct{Success bool `json:"success"`;IP string `json:"ip"`;Country string `json:"country"`;CountryCode string `json:"country_code"`;City string `json:"city"`;Region string `json:"region"`}
  if err=json.NewDecoder(io.LimitReader(resp.Body,16*1024)).Decode(&result);err!=nil{return agentGeo{},err}
  if !result.Success||!validPublicIP(result.IP){return agentGeo{},fmt.Errorf("location API did not return a valid public address")}
  area:=strings.TrimSpace(result.City)
@@ -59,7 +59,7 @@ func lookupAgentGeo(c *http.Client)(agentGeo,error){
  location:=country
  if area!=""&&area!=country{if location!=""{location+=" · "};location+=area}
  if location==""{return agentGeo{},fmt.Errorf("location API returned no region")}
- return agentGeo{IP:result.IP,Location:location},nil
+ countryCode:=strings.ToUpper(strings.TrimSpace(result.CountryCode));if len(countryCode)!=2{countryCode=""};for _,c:=range countryCode{if c<'A'||c>'Z'{countryCode=""}};return agentGeo{IP:result.IP,Location:location,CountryCode:countryCode},nil
 }
 func validPublicIP(text string)bool{
  ip:=net.ParseIP(strings.TrimSpace(text))
