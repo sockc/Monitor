@@ -18,13 +18,13 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   </div>
  </div>
  <section id="nodes" aria-label="服务器列表"></section>
- <div id="node-quick-info" class="node-quick-info" role="region" aria-label="机器基本信息" hidden></div>
+ <div id="node-info-backdrop" class="node-info-backdrop" hidden></div><div id="node-quick-info" class="node-quick-info" role="region" aria-label="机器基本信息" hidden></div>
 </section><section class="view" id="view-detail" hidden>
  <div class="detail-heading detail-top"><button type="button" id="detail-back" class="subtle-btn">← 返回列表</button><div class="detail-identity"><span class="eyebrow">节点详情</span><h1 id="detail-title">服务器详情</h1><p id="detail-subtitle" class="muted"></p></div><div id="detail-status" class="detail-live muted"></div></div>
  <div class="section-tabs" id="detail-tabs" role="tablist" aria-label="服务器详情分类"><button type="button" class="detail-tab selected" data-detail-tab="performance" role="tab" aria-selected="true" aria-controls="detail-performance">性能</button><button type="button" class="detail-tab" data-detail-tab="network" role="tab" aria-selected="false" aria-controls="detail-network">网络</button><button type="button" class="detail-tab" data-detail-tab="system" role="tab" aria-selected="false" aria-controls="detail-system">系统</button></div>
  <div class="detail-pane" id="detail-performance" role="tabpanel">
   <div class="detail-metrics" id="detail-metrics"></div>
-  <section class="history-panel ui-panel"><div class="panel-title"><div><h3>历史资源趋势</h3><p class="muted">CPU、内存及磁盘的使用率变化</p></div><select id="detail-hours" aria-label="趋势范围"><option value="24">24 小时</option><option value="168">7 天</option><option value="720">30 天</option></select></div><canvas id="detail-chart" width="900" height="240" aria-label="CPU、内存和磁盘趋势图"></canvas><p id="detail-chart-status" class="muted"></p></section>
+  <section class="history-panel ui-panel"><div class="panel-title"><div><h3>历史资源趋势</h3><p class="muted">CPU、内存及磁盘的使用率变化</p></div><select id="detail-hours" aria-label="趋势范围"><option value="24">24 小时</option><option value="168">7 天</option><option value="720">30 天</option></select></div><canvas id="detail-chart" width="900" height="240" aria-label="CPU、内存和磁盘趋势图" tabindex="0"></canvas><div id="detail-point" class="chart-readout" role="status">触摸图表查看各项指标</div><p id="detail-chart-status" class="muted"></p></section>
  </div>
  <div class="detail-pane" id="detail-network" role="tabpanel" hidden>
   <section class="history-panel ui-panel"><div class="panel-title"><div><h3>网络概览</h3><p class="muted">实时速率、流量及统计口径</p></div></div><div id="detail-network-info" class="detail-data-grid"></div></section>
@@ -36,7 +36,7 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
 </section>
 <section class="view" id="view-alerts" hidden>
  <div class="section-heading"><div><span class="eyebrow">系统事件</span><h1>告警记录</h1><p class="muted">查看触发中的问题与已经恢复的事件</p></div></div>
- <section class="history-panel ui-panel"><div class="panel-title"><div><h3>近期事件</h3><p class="muted">按最新时间排序</p></div><button type="button" id="refresh-alerts" class="subtle-btn">刷新</button></div><div id="alert-events" class="event-list"></div></section>
+ <section class="history-panel ui-panel"><div class="panel-title"><div><h3>近期事件</h3><p class="muted">按最新时间排序</p></div><button type="button" id="refresh-alerts" class="subtle-btn">刷新</button></div><div class="event-filters" role="group" aria-label="告警筛选"><button type="button" data-alert-mode="active" class="selected">告警中</button><button type="button" data-alert-mode="recovered">已恢复</button><button type="button" data-alert-mode="all">全部</button><span id="alert-summary" class="muted"></span></div><div id="alert-events" class="event-list"></div></section>
 </section>
 <section class="view" id="view-settings" hidden>
  <div class="section-heading"><div><span class="eyebrow">Monitor / 管理中心</span><h1>系统设置</h1><p class="muted">按任务分类管理服务器、流量提醒与安全选项</p></div></div>
@@ -136,8 +136,8 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <section class="view" id="view-statistics" hidden>
  <div class="section-heading"><div><span class="eyebrow">趋势与用量</span><h1>历史统计</h1><p class="muted">切换节点和时间范围，分析资源与网络使用情况</p></div></div>
  <section class="history-panel ui-panel"><div class="panel-title"><div><h3>资源使用趋势</h3><p class="muted">CPU、内存、磁盘历史使用率</p></div></div>
-  <div class="history-controls stat-filters"><select id="history-name" aria-label="服务器"></select><select id="history-hours" aria-label="范围"><option value="24">24 小时</option><option value="168">7 天</option><option value="720">30 天</option></select><select id="history-metric" aria-label="指标"><option value="cpu">CPU</option><option value="memory">内存</option><option value="disk">磁盘</option></select></div>
-  <canvas id="history-chart" width="900" height="260" aria-label="历史趋势图"></canvas><p id="history-status" class="muted"></p>
+  <div class="history-controls stat-filters"><button type="button" id="history-node-pick" class="subtle-btn">选择服务器</button><select id="history-name" class="accessible-picker-source" aria-label="服务器"></select><dialog id="history-node-dialog" class="node-picker" aria-label="选择服务器"><div class="node-picker-head"><strong>选择服务器</strong><button type="button" id="history-node-close" class="subtle-btn">关闭</button></div><input type="search" id="history-node-query" placeholder="搜索名称、分组、地区" aria-label="搜索服务器"><div id="history-node-options" class="node-picker-options"></div></dialog><select id="history-hours" aria-label="范围"><option value="24">24 小时</option><option value="168">7 天</option><option value="720">30 天</option></select><select id="history-metric" aria-label="指标"><option value="cpu">CPU</option><option value="memory">内存</option><option value="disk">磁盘</option></select></div>
+  <canvas id="history-chart" width="900" height="260" aria-label="历史趋势图" tabindex="0"></canvas><div id="history-point" class="chart-readout" role="status">触摸或移动到曲线上查看数值</div><p id="history-status" class="muted"></p>
  </section>
  <section class="history-panel ui-panel"><div class="panel-title"><div><h3>历史网络流量</h3><p class="muted">所选时间范围内的接收与发送用量</p></div></div><p id="traffic-summary" class="muted">选择节点和时间范围查看接收、发送量。</p><div id="traffic-bars"></div></section>
 </section><footer class="muted">Monitor · 每 5 秒更新</footer></main><script src="/static/app.js" defer></script></body></html>`
