@@ -578,7 +578,7 @@ document.querySelectorAll('[data-theme-choice]').forEach(b=>b.addEventListener('
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function metric(label,n){n=Math.max(0,Math.min(100,Number(n)||0));return '<div><div class="metric-row"><span>'+label+'</span><b>'+n.toFixed(1)+'%</b></div><div class="bar"><div class="fill" style="width:'+n+'%"></div></div></div>'}
 function formatBytes(n){if(!n)return '0 B';const units=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<units.length-1){n/=1024;i++}return n.toFixed(i?1:0)+' '+units[i]}
-let prevNames="";let cachedNodes=[];async function refresh(){try{const r=await fetch('/api/v1/nodes',{cache:'no-store'});if(r.status===401){location.href='/login';return}if(!r.ok)throw Error('HTTP '+r.status);const nodes=await r.json();nodes.sort((a,b)=>(a.group||"").localeCompare(b.group||"")||(a.display_name||a.name).localeCompare(b.display_name||b.name));cachedNodes=nodes;if(selectedNode)updateDetail();updateGroupOptions(nodes);const names=nodes.map(n=>n.name).join('|');if(names!==prevNames){prevNames=names;const ed=$("metadata-name"),old=ed.value;ed.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.name,n.name)));if(nodes.some(n=>n.name===old))ed.value=old;loadMetadata();const sel=$('history-name');const limitSelect=$('limit-name'),previousLimit=limitSelect.value;limitSelect.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.name,n.name)));if(nodes.some(n=>n.name===previousLimit))limitSelect.value=previousLimit;fillLimitsForm();const previousHistoryName=sel.value;sel.replaceChildren(...nodes.map(n=>new Option(n.name,n.name)));if(nodes.some(n=>n.name===previousHistoryName))sel.value=previousHistoryName;drawHistory();}renderNodeEditorRows(nodes);const up=nodes.filter(n=>n.online).length;$('total').textContent=nodes.length;$('online').textContent=up;$('offline').textContent=nodes.length-up;$('overview-hint').textContent='节点实时状态与资源使用';renderOverviewNodes();$('updated').textContent='更新 '+new Date().toLocaleTimeString()}catch(e){$('updated').textContent='获取失败：'+e.message}}
+let prevNames="";let cachedNodes=[];async function refresh(){try{const r=await fetch('/api/v1/nodes',{cache:'no-store'});if(r.status===401){location.href='/login';return}if(!r.ok)throw Error('HTTP '+r.status);const nodes=await r.json();nodes.sort(nodeOrder);cachedNodes=nodes;if(selectedNode)updateDetail();updateGroupOptions(nodes);const names=nodes.map(n=>n.name+'|'+(n.display_name||n.hostname||n.name)).join('|');if(names!==prevNames){prevNames=names;const ed=$("metadata-name"),old=ed.value;ed.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.name,n.name)));if(nodes.some(n=>n.name===old))ed.value=old;loadMetadata();const sel=$('history-name');const limitSelect=$('limit-name'),previousLimit=limitSelect.value;limitSelect.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.name,n.name)));if(nodes.some(n=>n.name===previousLimit))limitSelect.value=previousLimit;fillLimitsForm();const previousHistoryName=sel.value;sel.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.hostname||n.name,n.name)));if(nodes.some(n=>n.name===previousHistoryName))sel.value=previousHistoryName;drawHistory();}renderNodeEditorRows(nodes);const up=nodes.filter(n=>n.online).length;$('total').textContent=nodes.length;$('online').textContent=up;$('offline').textContent=nodes.length-up;$('overview-hint').textContent='节点实时状态与资源使用';renderOverviewNodes();$('updated').textContent='更新 '+new Date().toLocaleTimeString()}catch(e){$('updated').textContent='获取失败：'+e.message}}
 async function drawHistory(){const name=$('history-name').value;if(!name)return;try{const r=await fetch('/api/v1/history?name='+encodeURIComponent(name)+'&hours='+encodeURIComponent($('history-hours').value));if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();const canvas=$('history-chart');const ctx=canvas.getContext('2d');const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#34455e';ctx.lineWidth=1;for(let y=0;y<=100;y+=25){const py=20+(100-y)/100*(h-50);ctx.beginPath();ctx.moveTo(40,py);ctx.lineTo(w-15,py);ctx.stroke();ctx.fillStyle='#a6b5c9';ctx.font='12px sans-serif';ctx.fillText(y+'%',4,py+4)}const metric=$('history-metric').value;if(data.length){const lo=data[0].time,hi=Math.max(lo+1,data[data.length-1].time);ctx.beginPath();ctx.strokeStyle='#47a0f5';ctx.lineWidth=2;data.forEach((p,i)=>{const x=40+(p.time-lo)/(hi-lo)*(w-55),y=20+(100-p[metric])/100*(h-50);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}$('history-status').textContent=data.length+' 个采样区间';drawTraffic()}catch(e){$('history-status').textContent=e.message}}
 ['history-name','history-hours','history-metric'].forEach(k=>document.addEventListener('change',e=>{if(e.target.id===k)drawHistory()}));async function drawTraffic(){const name=$('history-name').value;if(!name)return;try{const r=await fetch('/api/v1/traffic?name='+encodeURIComponent(name)+'&hours='+encodeURIComponent($('history-hours').value));if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();$('traffic-summary').textContent='接收 ↓ '+formatBytes(d.rx)+' · 发送 ↑ '+formatBytes(d.tx)+'（统计范围内的采样增量）';const max=Math.max(1,...d.buckets.map(b=>b.rx+b.tx));$('traffic-bars').innerHTML=d.buckets.slice(-24).map(b=>'<div class="item"><span>'+new Date(b.time*1000).toLocaleString()+'</span><div class="track"><div class="value" style="width:'+Math.round((b.rx+b.tx)/max*100)+'%"></div></div><span>'+formatBytes(b.rx+b.tx)+'</span></div>').join('')}catch(e){$('traffic-summary').textContent=e.message}}
 function switchSettingsTab(tab){document.querySelectorAll('.settings-tab').forEach(b=>{const selected=b.dataset.settingsTab===tab;b.classList.toggle('selected',selected);b.setAttribute('aria-selected',String(selected));b.tabIndex=0});document.querySelectorAll('.settings-pane').forEach(p=>p.hidden=p.id!=='settings-'+tab)}
@@ -617,7 +617,7 @@ let editorSignature='';
 function renderNodeEditorRows(nodes,force=false){
  const area=$('node-editor-list');
  if(!area)return;
- const signature=nodes.map(n=>[n.name,n.display_name,n.group,n.manual_location,n.online].join('|')).join('\\n');
+ const signature=nodes.map(n=>[n.name,n.display_name,n.group,n.manual_location,n.sort_order,n.online].join('|')).join('\\n');
  if(!force&&signature===editorSignature)return;
  if(!force&&area.contains(document.activeElement))return;
  editorSignature=signature;
@@ -629,6 +629,7 @@ function renderNodeEditorRows(nodes,force=false){
    '<label><span class="node-edit-mobile-label">首页名称</span><input class="row-display" maxlength="60" placeholder="首页显示名称" aria-label="'+id+' 的首页名称" value="'+esc(n.display_name||'')+'"></label>'+
    '<label><span class="node-edit-mobile-label">分组</span><input class="row-group" maxlength="40" placeholder="分组" aria-label="'+id+' 的分组" value="'+group+'"></label>'+
    '<label><span class="node-edit-mobile-label">位置</span><input class="row-location" maxlength="80" placeholder="自动 IP 位置" aria-label="'+id+' 的手动位置" value="'+loc+'"></label>'+
+   '<label><span class="node-edit-mobile-label">排序</span><input class="row-sort" type="number" min="0" max="9999" step="1" aria-label="'+id+' 的首页顺序" title="1 最靠前；0 使用默认名称排序" value="'+(Number(n.sort_order)||0)+'"></label>'+
    '<div class="node-edit-actions"><button type="button" data-node-action="save" class="primary-btn">保存</button><button type="button" data-node-action="advanced" class="subtle-btn">详细配置</button><button type="button" data-node-action="rebind" class="subtle-btn">重新连接</button><button type="button" data-node-action="delete" class="danger-btn">删除</button></div>'+
    '<div class="row-feedback" aria-live="polite"></div></div>'
  }).join('')
@@ -652,7 +653,7 @@ $('node-editor-list').addEventListener('click',async e=>{
  if(action==='advanced'){showAdvancedNode(id);return}
  if(action==='save'){
   btn.disabled=true;
-  const payload={name:id,display_name:row.querySelector('.row-display').value.trim(),group:row.querySelector('.row-group').value.trim(),location:row.querySelector('.row-location').value.trim(),notes:node.notes||''};
+  const payload={name:id,display_name:row.querySelector('.row-display').value.trim(),group:row.querySelector('.row-group').value.trim(),location:row.querySelector('.row-location').value.trim(),sort_order:Number(row.querySelector('.row-sort').value),notes:node.notes||''};
   try{
    const r=await fetch('/api/v1/node-metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
    if(!r.ok)throw Error(await r.text());feedback.textContent='已保存，Agent 不需要重新连接';await refresh();renderNodeEditorRows(cachedNodes,true)
@@ -687,6 +688,7 @@ function loadMetadata(){const n=cachedNodes.find(x=>x.name===$("metadata-name").
  const p=n.profile||{};
  $("metadata-display").value=n.display_name||"";
  $("metadata-group").value=n.group||"";
+ $("metadata-sort").value=Number(n.sort_order)||0;
  $("metadata-location").value=n.manual_location||"";
  $("metadata-auto-location").textContent=n.auto_location?"IP 自动识别："+n.auto_location+(n.public_ip?"（"+n.public_ip+"）":"")+" · 清空手动位置即可恢复自动识别":n.public_ip?"公网 IP "+n.public_ip+" · 定位暂不可用":"等待 Agent 上报公网 IP 位置；旧 Agent 需升级";
  $("metadata-notes").value=n.notes||"";
@@ -705,7 +707,7 @@ $("metadata-name").addEventListener("change",loadMetadata);
 $("metadata-form").addEventListener("submit",async e=>{
  e.preventDefault();
  const selected=$("metadata-name").value;
- const payload={name:selected,display_name:$("metadata-display").value,group:$("metadata-group").value,location:$("metadata-location").value,notes:$("metadata-notes").value,
+ const payload={name:selected,display_name:$("metadata-display").value,group:$("metadata-group").value,sort_order:Number($("metadata-sort").value),location:$("metadata-location").value,notes:$("metadata-notes").value,
   profile:{provider:$("metadata-provider").value.trim(),country_code:$("metadata-country").value.trim().toUpperCase(),price_value:Number($("metadata-price").value),price_currency:$("metadata-currency").value,billing_cycle:$("metadata-cycle").value,period_start:$("metadata-start").value,port_mbps:Number($("metadata-port").value),has_ipv4:Number($("metadata-ipv4").value),has_ipv6:Number($("metadata-ipv6").value)},
   quota_gb:Number($("metadata-quota").value),expires_on:$("metadata-expires").value
  };
@@ -717,8 +719,9 @@ $("metadata-form").addEventListener("submit",async e=>{
  }catch(err){$("metadata-status").textContent="保存失败："+err.message}
 });
 function updateGroupOptions(nodes){const el=$('node-group'),value=el.value,groups=[...new Set(nodes.map(n=>n.group).filter(Boolean))].sort();const next=['',...groups];if([...el.options].map(x=>x.value).join('|')!==next.join('|')){el.replaceChildren(new Option('全部分组',''),...groups.map(x=>new Option(x,x)));el.value=value}}
-function filteredNodes(nodes){const q=$('node-search').value.trim().toLowerCase(),group=$('node-group').value,order=$('node-order').value;const out=nodes.filter(n=>(!group||n.group===group)&&(!q||[n.name,n.display_name,n.group,n.location,n.os,n.notes,n.hostname].some(x=>String(x||'').toLowerCase().includes(q))));if(order==='offline')out.sort((a,b)=>Number(a.online)-Number(b.online));if(order==='cpu')out.sort((a,b)=>b.cpu-a.cpu);return out}
-['node-search','node-group','node-order'].forEach(id=>$(id).addEventListener('input',()=>{renderOverviewNodes()}));
+function nodeOrder(a,b){const aa=Number(a.sort_order)>0?Number(a.sort_order):10000,bb=Number(b.sort_order)>0?Number(b.sort_order):10000;return aa-bb||(a.display_name||a.hostname||a.name).localeCompare(b.display_name||b.hostname||b.name,'zh-Hans-CN')}
+function filteredNodes(nodes){const q=$('node-search').value.trim().toLowerCase(),group=$('node-group').value;return nodes.filter(n=>(!group||n.group===group)&&(!q||[n.name,n.display_name,n.group,n.location,n.os,n.notes,n.hostname].some(x=>String(x||'').toLowerCase().includes(q)))).sort(nodeOrder)}
+['node-search','node-group'].forEach(id=>$(id).addEventListener('input',()=>{renderOverviewNodes()}));
 let currentLayout='compact';let trafficPeriods={};let nodeLimitsCache={};
 try{const saved=localStorage.getItem('monitor-node-layout');if(['cards','compact','list'].includes(saved))currentLayout=saved}catch(e){}
 function updateLayout(){const container=$('nodes');container.classList.add('server-grid');container.dataset.layout=currentLayout;document.querySelectorAll('.layout-button').forEach(b=>{const active=b.dataset.layout===currentLayout;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))})}
