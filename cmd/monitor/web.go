@@ -19,6 +19,7 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   </div>
  </div>
  <section id="nodes" aria-label="服务器列表"></section>
+ <div id="node-quick-info" class="node-quick-info" role="region" aria-label="机器基本信息" hidden></div>
 </section><section class="view" id="view-detail" hidden>
  <div class="detail-heading detail-top"><button type="button" id="detail-back" class="subtle-btn">← 返回列表</button><div class="detail-identity"><span class="eyebrow">节点详情</span><h1 id="detail-title">服务器详情</h1><p id="detail-subtitle" class="muted"></p></div><div id="detail-status" class="detail-live muted"></div></div>
  <div class="section-tabs" id="detail-tabs" role="tablist" aria-label="服务器详情分类"><button type="button" class="detail-tab selected" data-detail-tab="performance" role="tab" aria-selected="true" aria-controls="detail-performance">性能</button><button type="button" class="detail-tab" data-detail-tab="network" role="tab" aria-selected="false" aria-controls="detail-network">网络</button><button type="button" class="detail-tab" data-detail-tab="system" role="tab" aria-selected="false" aria-controls="detail-system">系统</button></div>
