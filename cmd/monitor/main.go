@@ -32,7 +32,7 @@ func validIPFamily(raw string,family int)bool{
  return false
 }
 
-const monitorVersion="v0.9.16"
+const monitorVersion="v0.9.16.1"
 type Sample struct {
  Name string `json:"name"`
  Hostname string `json:"hostname"`
