@@ -51,9 +51,13 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="settings-content">
    <div class="settings-pane" id="settings-nodes" role="tabpanel">
     <div class="settings-pane-heading"><div><h2>节点管理</h2><p class="muted">维护名称、分组和备注，或生成新的 Agent 安装命令</p></div><button type="button" id="show-add-node" class="primary-btn">＋ 添加节点</button></div>
-    <section class="settings-card"><div class="settings-card-heading"><h3>基本资料</h3><p class="muted">仅修改监控面板中的显示信息，不会重命名系统主机</p></div>
+    <section class="settings-card"><div class="settings-card-heading"><h3>编辑节点</h3><p class="muted">所有节点按行显示。直接修改首页名称、分组、位置并保存；不会修改固定节点 ID 或令牌</p></div>
+     <div class="node-editor-head" aria-hidden="true"><span>节点 / 状态</span><span>首页显示名称</span><span>分组</span><span>位置（可留空）</span><span>操作</span></div>
+     <div id="node-editor-list" class="node-editor-list"><p class="field-hint">正在读取节点…</p></div>
+    </section>
+    <section class="settings-card" id="metadata-advanced" hidden><div class="settings-card-heading"><div><h3>完整配置</h3><p class="muted">修改套餐、国旗、线路和到期信息；这些设置不会影响 Agent 在线</p></div><button type="button" id="metadata-advanced-close" class="subtle-btn">收起</button></div>
      <form id="metadata-form" class="settings-form">
-      <label class="form-field form-wide"><span>选择服务器</span><select id="metadata-name" aria-label="选择服务器"></select></label>
+      <label class="form-field form-wide node-identity-readonly" hidden><span>节点 ID（系统生成，固定）</span><select id="metadata-name" aria-label="选择服务器"></select></label>
       <label class="form-field"><span>显示名称</span><input id="metadata-display" maxlength="60" placeholder="例如 香港主服务器"></label>
       <label class="form-field"><span>所属分组</span><input id="metadata-group" maxlength="40" placeholder="例如 香港"></label><label class="form-field"><span>服务器位置（手动覆盖）</span><input id="metadata-location" maxlength="80" placeholder="留空使用 IP 自动定位" autocomplete="off"><small id="metadata-auto-location">等待 Agent 获取公网 IP 位置</small></label>
       <div class="form-section-title form-wide"><strong>套餐与线路</strong><small>价格、G 口和 IP 支持由你确认填写，避免误识别</small></div>
@@ -73,13 +77,13 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
       <div class="form-actions"><button type="submit" class="primary-btn">保存基本资料</button><span id="metadata-status" class="form-feedback" role="status"></span></div>
      </form>
     </section>
-    <section class="settings-card settings-danger"><div class="settings-card-heading"><h3>节点维护</h3><p class="muted">重命名、撤销令牌或删除节点，请确认操作对象</p></div>
-     <div class="settings-form"><label class="form-field"><span>操作节点</span><select id="manage-name" aria-label="管理节点"></select></label><label class="form-field"><span>新节点标识（仅用于重命名）</span><input id="rename-target" placeholder="英文、数字、下划线、横线"></label>
-     <div class="form-actions"><button type="button" id="rename-node" class="subtle-btn">重命名</button><button type="button" id="revoke-node" class="subtle-btn">撤销令牌</button><button type="button" id="delete-node" class="danger-btn">删除节点</button></div></div>
-     <p class="field-hint">删除会清理历史采样且拒绝旧令牌；重命名后需要重新配置 Agent。</p><p id="manage-status" class="form-feedback" role="status"></p>
+    <section class="settings-card" id="node-rebind-panel" hidden><div class="settings-card-heading"><div><h3>重新连接 Agent</h3><p class="muted">复制这一条命令到对应 VPS，即可更新节点凭据并恢复上报。不需要卸载重装</p></div><button type="button" id="node-rebind-close" class="subtle-btn">收起</button></div>
+     <label class="form-field"><span>重新连接命令（仅显示本次生成的令牌）</span><textarea id="node-rebind-command" readonly rows="3" spellcheck="false"></textarea></label>
+     <div class="form-actions"><button id="node-rebind-copy" type="button" class="primary-btn">复制命令</button><span id="node-rebind-status" class="form-feedback" role="status"></span></div>
+     <p class="field-hint">重新连接会轮换该节点认证令牌，原令牌立即失效。节点历史和显示资料不变，请立即在对应 VPS 执行命令。</p>
     </section>
-    <section class="settings-card" id="add-panel" hidden><div class="settings-card-heading"><h3>添加服务器 / 轮换令牌</h3><button type="button" id="hide-add-node" class="subtle-btn">收起</button></div><p class="field-hint">节点标识仅支持字母、数字、横线和下划线。对现有节点重新生成令牌，会立即使旧 Agent 认证失效。</p>
-     <form id="create-node" class="settings-form"><label class="form-field"><span>节点标识</span><input id="node-name" required maxlength="64" pattern="[A-Za-z0-9_-]+" placeholder="例如 hk-01"></label><label class="form-field"><span>Monitor 服务器地址</span><input id="server-url" placeholder="https://monitor.example.com" type="url" required></label><div class="form-actions"><button type="submit" class="primary-btn">生成安装命令</button><span id="create-status" class="form-feedback" role="status"></span></div></form>
+    <section class="settings-card" id="add-panel" hidden><div class="settings-card-heading"><h3>添加服务器</h3><button type="button" id="hide-add-node" class="subtle-btn">收起</button></div><p class="field-hint">系统自动生成固定节点 ID 和专属令牌，无需输入节点名。安装成功后在上面的列表修改首页显示名称。</p>
+     <form id="create-node" class="settings-form"><label class="form-field form-wide"><span>Monitor 服务器地址</span><input id="server-url" placeholder="https://monitor.example.com" type="url" required></label><div class="form-actions"><button type="submit" class="primary-btn">一键生成安装命令</button><span id="create-status" class="form-feedback" role="status"></span></div></form>
      <label class="form-field"><span>专属安装命令</span><textarea id="install-command" rows="3" readonly spellcheck="false" aria-label="安装命令"></textarea></label><button type="button" id="copy-command" class="subtle-btn">复制命令</button><p class="field-hint">命令包含一次性显示的认证令牌，不要公开分享；执行后建议清理终端历史记录。</p>
     </section>
    </div>
