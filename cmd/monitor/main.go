@@ -131,13 +131,30 @@ func main(){
  authorized:=auth.require
  auth.routes(mux)
  mux.HandleFunc("/api/v1/tokens",func(w http.ResponseWriter,r *http.Request){
- if !authorized(w,r){return};if r.Method!="POST"{http.Error(w,"method",405);return}
-  if r.Header.Get("Origin")!="" && r.Header.Get("Origin")!="https://"+r.Host && r.Header.Get("Origin")!="http://"+r.Host{http.Error(w,"origin",403);return}
- r.Body=http.MaxBytesReader(w,r.Body,4096);var req struct{Name string `json:"name"`};if json.NewDecoder(r.Body).Decode(&req)!=nil||!validNodeName(req.Name){http.Error(w,"invalid name",400);return}
- b:=make([]byte,32);if _,e:=rand.Read(b);e!=nil{http.Error(w,"random failed",500);return};secret:=hex.EncodeToString(b);hash:=sha256.Sum256([]byte(secret))
- if _,e:=s.db.ExecContext(r.Context(),"INSERT INTO agent_tokens(name, hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",req.Name,hex.EncodeToString(hash[:]));e!=nil{http.Error(w,"db failed",500);return}
- s.Lock();if _,exists:=s.Nodes[req.Name];!exists{s.Nodes[req.Name]=Node{Sample:Sample{Name:req.Name}}};s.Unlock()
- w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store");json.NewEncoder(w).Encode(map[string]string{"name":req.Name,"token":secret})
+  if !authorized(w,r){return}
+  if r.Method!="POST"{http.Error(w,"method",405);return}
+  if !sameOrigin(r){http.Error(w,"origin",403);return}
+  // Allocate immutable, cryptographically random IDs server-side.
+  // A node's human-facing name is separate metadata and can be changed safely.
+  name,secret,e:=createRandomNodeCredential(r.Context(),s.db)
+  if e!=nil{log.Printf("create node credential: %v",e);http.Error(w,"create node failed",500);return}
+  s.Lock();s.Nodes[name]=Node{Sample:Sample{Name:name}};s.Unlock()
+  w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store")
+  json.NewEncoder(w).Encode(map[string]string{"name":name,"token":secret})
+ })
+ mux.HandleFunc("/api/v1/node-rebind",func(w http.ResponseWriter,r *http.Request){
+  if !authorized(w,r){return}
+  if r.Method!="POST"{http.Error(w,"method",405);return}
+  if !sameOrigin(r){http.Error(w,"origin",403);return}
+  r.Body=http.MaxBytesReader(w,r.Body,2048);defer r.Body.Close()
+  var request struct{Name string `json:"name"`}
+  if json.NewDecoder(r.Body).Decode(&request)!=nil||!validNodeName(request.Name){http.Error(w,"invalid node",400);return}
+  s.RLock();_,exists:=s.Nodes[request.Name];s.RUnlock()
+  if !exists{http.Error(w,"unknown node",404);return}
+  token,e:=rotateNodeCredential(r.Context(),s.db,request.Name)
+  if e!=nil{log.Printf("rotate node credential: %v",e);http.Error(w,"rebind failed",500);return}
+  w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store")
+  json.NewEncoder(w).Encode(map[string]string{"name":request.Name,"token":token})
  })
  mux.HandleFunc("/api/v1/history",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}; name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if len(name)==0||len(name)>100{http.Error(w,"invalid name",400);return}
@@ -152,11 +169,6 @@ func main(){
    if e:=removeNode(r.Context(),s.db,x.Name);e!=nil{http.Error(w,e.Error(),500);return};delete(s.Nodes,x.Name)
  case "revoke":
    if e:=revokeNode(r.Context(),s.db,x.Name);e!=nil{http.Error(w,e.Error(),500);return};delete(s.Nodes,x.Name)
- case "rename":
-   if !validNodeName(x.NewName)||x.NewName==x.Name{http.Error(w,"invalid new name",400);return}
-   if _,ok:=s.Nodes[x.NewName];ok{http.Error(w,"name exists",409);return}
-   if e:=renameNode(r.Context(),s.db,x.Name,x.NewName);e!=nil{http.Error(w,e.Error(),500);return}
-   if n,ok:=s.Nodes[x.Name];ok{n.Name=x.NewName;s.Nodes[x.NewName]=n;delete(s.Nodes,x.Name)}
  default:http.Error(w,"invalid action",400);return
  };w.WriteHeader(204)
  })
