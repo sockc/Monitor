@@ -18,7 +18,7 @@ func TestDashboardUIControls(t *testing.T) {
   "show-add-node", "hide-add-node", "add-panel", "theme-select", "settings-appearance", "create-node",
   "metadata-form", "metadata-name", "metadata-display", "metadata-group", "metadata-location", "metadata-provider", "metadata-country", "metadata-price", "metadata-currency", "metadata-cycle", "metadata-port", "metadata-ipv4", "metadata-ipv6", "metadata-start", "metadata-expires", "metadata-quota",
   "metadata-notes", "metadata-auto-location", "metadata-status", "node-editor-list", "metadata-advanced", "metadata-advanced-close",
-  "node-rebind-panel", "node-rebind-command", "node-rebind-copy", "node-rebind-close", "node-rebind-status",
+  "node-rebind-panel", "node-rebind-command", "node-rebind-copy", "node-rebind-close", "node-rebind-status", "node-quick-info",
   "limit-name", "limit-timezone", "limit-quota", "limit-expires",
   "node-limits-form", "limit-status", "alerts-form", "alerts-status",
   "alert-events", "refresh-alerts", "history-chart", "history-name",
@@ -60,5 +60,12 @@ func TestDashboardUIControls(t *testing.T) {
  for _,term:=range []string{"renderNodeEditorRows","data-node-action=","/api/v1/node-rebind","generatedInstallCommand"}{
   if !strings.Contains(appJS,term){t.Errorf("node inventory missing %s",term)}
  }
+
+ if !strings.Contains(dashboardHTML, `id="node-quick-info"`){t.Error("machine-info panel missing")}
+ for _,part:=range []string{"nodeBootDate(n.boot_time)","node-info-trigger","node-boot-line","nodeInfoContent","pointerover","pointerout","quickInfoPinned","aria-expanded","hideNodeInfo","showNodeInfo"}{
+  if !strings.Contains(appJS,part){t.Errorf("machine info interaction missing %q",part)}
+ }
+ if !strings.Contains(appJS,"e.target.closest('.node-info-trigger')"){t.Error("info button must not trigger node detail click")}
+ if !strings.Contains(styleCSS,".node-quick-info[hidden]"){t.Error("info panel must hide correctly")}
 
 }
