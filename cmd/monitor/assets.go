@@ -606,6 +606,8 @@ html[data-theme=dark] #view-overview .node-quick-info .node-info-close{backgroun
  #view-overview .dashboard-filters{grid-template-columns:minmax(0,1.1fr) minmax(96px,1fr)!important}
  #view-overview .dashboard-filters input,#view-overview .dashboard-filters select{font-size:11px!important}
 }
+
+@media(min-width:1381px){#view-settings .node-editor-head,#view-settings .node-edit-row{grid-template-columns:minmax(115px,1fr) minmax(125px,1.1fr) minmax(85px,.65fr) minmax(120px,.9fr) minmax(62px,.55fr) minmax(245px,1.8fr)!important}}
 `
 const appJS=`const $=x=>document.getElementById(x);
 const validThemes=['glass','dark','light'];
