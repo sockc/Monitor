@@ -51,8 +51,8 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="settings-content">
    <div class="settings-pane" id="settings-nodes" role="tabpanel">
     <div class="settings-pane-heading"><div><h2>节点管理</h2><p class="muted">维护名称、分组和备注，或生成新的 Agent 安装命令</p></div><button type="button" id="show-add-node" class="primary-btn">＋ 添加节点</button></div>
-    <section class="settings-card"><div class="settings-card-heading"><h3>编辑节点</h3><p class="muted">所有节点按行显示。直接修改首页名称、分组、位置并保存；不会修改固定节点 ID 或令牌</p></div>
-     <div class="node-editor-head" aria-hidden="true"><span>节点 / 状态</span><span>首页显示名称</span><span>分组</span><span>位置（可留空）</span><span>操作</span></div>
+    <section class="settings-card"><div class="settings-card-heading"><h3>编辑节点</h3><p class="muted">所有节点按行显示。直接修改名称、分组、位置和显示顺序并保存；顺序 1 最靠前，0 使用默认排序，不影响节点 ID 或令牌</p></div>
+     <div class="node-editor-head" aria-hidden="true"><span>节点 / 状态</span><span>首页显示名称</span><span>分组</span><span>位置（可留空）</span><span>顺序</span><span>操作</span></div>
      <div id="node-editor-list" class="node-editor-list"><p class="field-hint">正在读取节点…</p></div>
     </section>
     <section class="settings-card" id="metadata-advanced" hidden><div class="settings-card-heading"><div><h3>完整配置</h3><p class="muted">修改套餐、国旗、线路和到期信息；这些设置不会影响 Agent 在线</p></div><button type="button" id="metadata-advanced-close" class="subtle-btn">收起</button></div>
