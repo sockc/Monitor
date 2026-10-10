@@ -52,8 +52,7 @@ type sample struct {
 type cpuStat struct{ idle,total uint64 }
 func readCPU()cpuStat {
  b,e:=os.ReadFile("/proc/stat");if e!=nil{return cpuStat{}}
- lines:=strings.SplitN(string(b),"
-",2);f:=strings.Fields(lines[0]);if len(f)<5{return cpuStat{}}
+ lines:=strings.SplitN(string(b),"\n",2);f:=strings.Fields(lines[0]);if len(f)<5{return cpuStat{}}
  var s cpuStat
  for i,v:=range f[1:] {n,_:=strconv.ParseUint(v,10,64);s.total+=n;if i==3||i==4{s.idle+=n}}
  return s
@@ -74,14 +73,12 @@ func wanInterface()string {
 func networkBytes(iface string)(uint64,uint64){
  if iface==""{return 0,0}
  b,e:=os.ReadFile("/proc/net/dev");if e!=nil{return 0,0}
- for _,line:=range strings.Split(string(b),"
-"){a:=strings.SplitN(line,":",2);if len(a)!=2||strings.TrimSpace(a[0])!=iface{continue};v:=strings.Fields(a[1]);if len(v)<16{return 0,0};rx,_:=strconv.ParseUint(v[0],10,64);tx,_:=strconv.ParseUint(v[8],10,64);return rx,tx}
+ for _,line:=range strings.Split(string(b),"\n"){a:=strings.SplitN(line,":",2);if len(a)!=2||strings.TrimSpace(a[0])!=iface{continue};v:=strings.Fields(a[1]);if len(v)<16{return 0,0};rx,_:=strconv.ParseUint(v[0],10,64);tx,_:=strconv.ParseUint(v[8],10,64);return rx,tx}
  return 0,0
 }
 func operatingSystem()string {
  b,e:=os.ReadFile("/etc/openwrt_release");if e!=nil{return "OpenWrt"}
- for _,line:=range strings.Split(string(b),"
-"){if strings.HasPrefix(line,"DISTRIB_RELEASE="){return "OpenWrt "+strings.Trim(strings.TrimPrefix(line,"DISTRIB_RELEASE=")," '"")}}
+ for _,line:=range strings.Split(string(b),"\n"){if strings.HasPrefix(line,"DISTRIB_RELEASE="){return "OpenWrt "+strings.Trim(strings.TrimPrefix(line,"DISTRIB_RELEASE="),string([]byte{32,39,34}))}}
  return "OpenWrt"
 }
 func collect(name string,prev cpuStat)(sample,cpuStat){
