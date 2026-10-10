@@ -65,14 +65,15 @@ func openDB(path string)(*sql.DB,error){
  // add a user-controlled geographic location without guessing from public IP.
  rows,err:=db.Query("PRAGMA table_info(node_metadata)")
  if err!=nil{db.Close();return nil,err}
- hasLocation:=false
+ hasLocation:=false;hasSortOrder:=false
  for rows.Next(){var cid,notnull,pk int;var name,typ string;var defaultValue sql.NullString
   if err=rows.Scan(&cid,&name,&typ,&notnull,&defaultValue,&pk);err!=nil{rows.Close();db.Close();return nil,err}
-  if name=="location"{hasLocation=true}
+  if name=="location"{hasLocation=true};if name=="sort_order"{hasSortOrder=true}
  }
  if err=rows.Err();err!=nil{rows.Close();db.Close();return nil,err}
  rows.Close()
  if !hasLocation{if _,err=db.Exec("ALTER TABLE node_metadata ADD COLUMN location TEXT NOT NULL DEFAULT ''");err!=nil{db.Close();return nil,fmt.Errorf("location migration: %w",err)}}
+ if !hasSortOrder{if _,err=db.Exec("ALTER TABLE node_metadata ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");err!=nil{db.Close();return nil,fmt.Errorf("sort migration: %w",err)}}
  // Older IP-location tables may not have a country code for the flag.
  geoRows,eGeo:=db.Query("PRAGMA table_info(node_geo)")
  if eGeo!=nil{db.Close();return nil,eGeo}
