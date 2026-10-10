@@ -6,6 +6,7 @@ import (
  "encoding/json"
  "fmt"
  "io"
+ "net"
  "log"
  "net/http"
  "os"
@@ -19,8 +20,14 @@ func runAgent(server,name,token string,interval time.Duration){
  if interval<time.Second{log.Fatal("interval must be >= 1s")}
  client:=&http.Client{Timeout:10*time.Second}
  prev:=readCPU()
+ geoEnabled:=os.Getenv("MONITOR_GEO_ENABLED")!="0"
+ var geo agentGeo
+ var nextGeo time.Time
  send:=func(){
-  sample,next:=collect(name,prev);prev=next;sample.AgentVersion=monitorVersion
+  if geoEnabled&&time.Now().After(nextGeo){
+   if discovered,err:=lookupAgentGeo(client);err==nil{geo=discovered;nextGeo=time.Now().Add(12*time.Hour)}else{nextGeo=time.Now().Add(time.Hour);log.Printf("auto location: %v",err)}
+  }
+  sample,next:=collect(name,prev);prev=next;sample.AgentVersion=monitorVersion;sample.PublicIP=geo.IP;sample.AutoLocation=geo.Location
   b,e:=json.Marshal(sample);if e!=nil{return}
   ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
   req,e:=http.NewRequestWithContext(ctx,"POST",strings.TrimRight(server,"/")+"/api/v1/ingest",bytes.NewReader(b));if e!=nil{log.Print(e);return}
@@ -31,4 +38,31 @@ func runAgent(server,name,token string,interval time.Duration){
  log.Printf("agent %s started",name);send()
  ticker:=time.NewTicker(interval);defer ticker.Stop();for range ticker.C{send()}
 }
-var _=fmt.Sprintf
+
+type agentGeo struct{IP string;Location string}
+// The agent reports its own egress address, never the reverse proxy IP.
+// Keep provider use infrequent and optional, and do not block monitoring for
+// longer than the HTTP timeout when the lookup fails.
+func lookupAgentGeo(c *http.Client)(agentGeo,error){
+ ctx,cancel:=context.WithTimeout(context.Background(),4*time.Second);defer cancel()
+ req,err:=http.NewRequestWithContext(ctx,http.MethodGet,"https://ipwho.is/",nil);if err!=nil{return agentGeo{},err}
+ req.Header.Set("User-Agent","Monitor-Agent/"+monitorVersion)
+ resp,err:=c.Do(req);if err!=nil{return agentGeo{},err};defer resp.Body.Close()
+ if resp.StatusCode!=200{return agentGeo{},fmt.Errorf("location API returned HTTP %d",resp.StatusCode)}
+ var result struct{Success bool `json:"success"`;IP string `json:"ip"`;Country string `json:"country"`;City string `json:"city"`;Region string `json:"region"`}
+ if err=json.NewDecoder(io.LimitReader(resp.Body,16*1024)).Decode(&result);err!=nil{return agentGeo{},err}
+ if !result.Success||!validPublicIP(result.IP){return agentGeo{},fmt.Errorf("location API did not return a valid public address")}
+ area:=strings.TrimSpace(result.City)
+ if area==""{area=strings.TrimSpace(result.Region)}
+ country:=strings.TrimSpace(result.Country)
+ if len([]rune(area))>60||len([]rune(country))>60{return agentGeo{},fmt.Errorf("location response too long")}
+ location:=country
+ if area!=""&&area!=country{if location!=""{location+=" · "};location+=area}
+ if location==""{return agentGeo{},fmt.Errorf("location API returned no region")}
+ return agentGeo{IP:result.IP,Location:location},nil
+}
+func validPublicIP(text string)bool{
+ ip:=net.ParseIP(strings.TrimSpace(text))
+ return ip!=nil&&!ip.IsPrivate()&&!ip.IsLoopback()&&!ip.IsLinkLocalUnicast()&&!ip.IsLinkLocalMulticast()&&!ip.IsUnspecified()&&!ip.IsMulticast()
+}
+
