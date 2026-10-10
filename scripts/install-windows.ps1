@@ -1,4 +1,4 @@
-# Monitor Windows x64 Agent installer.
+﻿# Monitor Windows x64 Agent installer.
 # Run from an elevated Windows PowerShell 5.1+ or PowerShell 7 session.
 [CmdletBinding()]
 param(
