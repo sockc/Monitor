@@ -53,6 +53,16 @@ Agent 首次安装会提示：**Monitor Server HTTPS 地址**、节点标识与�
 若同一机器同时运行 Server 和 Agent，升级时优先备份 Server 并同步重启 Agent。
 升级前建议检查 [Releases](https://github.com/sockc/Monitor/releases)。
 
+## V0.9.4：四列服务器驾驶舱与位置管理
+
+- 桌面宽屏（1250px 起）每行 4 张服务器卡片，中屏 2 张、手机 1 张；默认保持紧凑卡片，也可切换标准或列表
+- 首页总览改为扁平统计条，搜索、分组、排序、布局切换和添加节点整合到一行工具栏
+- 卡片显示服务器名称、**所在国家/城市（自定义位置）**、系统、CPU 核心/内存/磁盘、资源进度、实时速率、今日/本月流量
+- 网络计数累计值继续在详情页查看；临近到期、额度使用过高、资源高占用才显示提醒
+- 登录后到「设置 → 节点管理 → 基本资料 → 服务器位置」填写位置，例「中国香港 · 沙田」「美国 · 洛杉矶」。不使用 IP 自动定位，避免代理和云服务出口造成误判
+- Server 首次启动自动为已有 SQLite 节点资料增加 `location` 字段，保留已有名称、分组、备注和历史采样；旧 Agent 继续兼容
+- 通过 `sudo monitorctl self-update && sudo monitorctl upgrade server` 升级 Server，Agent 无需升级
+
 ## Features
 
 - Linux CPU, memory, root filesystem, total network traffic, uptime
