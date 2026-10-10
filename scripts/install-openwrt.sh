@@ -1,7 +1,16 @@
 #!/bin/sh
 set -eu
-# Installation: sh install-openwrt.sh https://monitor.example.com NODE_NAME TOKEN
-SERVER="$1"; NAME="$2"; TOKEN="$3"
+# Installation: sh install-openwrt.sh https://monitor.example.com NODE_NAME
+SERVER="${1:-}"; NAME="${2:-}"
+[ -n "$SERVER" ] && [ -n "$NAME" ] || { echo 'Usage: sh install-openwrt.sh https://server NODE_NAME'; exit 1; }
+if [ ! -e /etc/monitor-agent.json ]; then
+ printf 'Paste Agent token: ' >&2
+ stty -echo 2>/dev/null || true
+ IFS= read -r TOKEN
+ stty echo 2>/dev/null || true
+ printf '\n' >&2
+ [ -n "$TOKEN" ] || { echo 'Token required'; exit 1; }
+else TOKEN=''; fi
 [ "$(uname -m)" = "aarch64" ] || { echo "Only aarch64 is supported"; exit 1; }
 [ -f /lib/functions/procd.sh ] || { echo "procd is required"; exit 1; }
 case "$SERVER" in https://*) ;; *) echo "HTTPS server URL required"; exit 1;; esac
@@ -28,7 +37,8 @@ if [ ! -e /etc/monitor-agent.json ]; then
  escape() { printf '%s' "$1" | sed 's/\\/\\\\/g;s/"/\\"/g'; }
  printf '{"server":"%s","name":"%s","token":"%s","interval_seconds":10}\n' \
    "$(escape "$SERVER")" "$(escape "$NAME")" "$(escape "$TOKEN")" > "$TMP/config"
- install -m 600 "$TMP/config" /etc/monitor-agent.json
+ cp "$TMP/config" /etc/monitor-agent.json
+ chmod 600 /etc/monitor-agent.json
 fi
 cat > "$TMP/init" <<'EOF'
 #!/bin/sh /etc/rc.common
@@ -44,8 +54,10 @@ start_service() {
 }
 EOF
 [ ! -x /etc/init.d/monitor-agent ] || /etc/init.d/monitor-agent stop || true
-install -m 755 "$TMP/$BINARY" /usr/bin/monitor-openwrt-agent
-install -m 755 "$TMP/init" /etc/init.d/monitor-agent
+cp "$TMP/$BINARY" /usr/bin/monitor-openwrt-agent
+chmod 755 /usr/bin/monitor-openwrt-agent
+cp "$TMP/init" /etc/init.d/monitor-agent
+chmod 755 /etc/init.d/monitor-agent
 /etc/init.d/monitor-agent enable
 /etc/init.d/monitor-agent start
 echo "Monitor OpenWrt Agent started."
