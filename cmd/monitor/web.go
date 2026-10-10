@@ -85,8 +85,8 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
      <p class="field-hint">重新连接会轮换该节点认证令牌，原令牌立即失效。节点历史和显示资料不变，请立即在对应 VPS 执行命令。</p>
     </section>
     <section class="settings-card" id="add-panel" hidden><div class="settings-card-heading"><h3>添加服务器</h3><button type="button" id="hide-add-node" class="subtle-btn">收起</button></div><p class="field-hint">系统自动生成固定节点 ID 和专属令牌，无需输入节点名。安装成功后在上面的列表修改首页显示名称。</p>
-     <form id="create-node" class="settings-form"><label class="form-field form-wide"><span>Monitor 服务器地址</span><input id="server-url" placeholder="https://monitor.example.com" type="url" required></label><div class="form-actions"><button type="submit" class="primary-btn">一键生成安装命令</button><span id="create-status" class="form-feedback" role="status"></span></div></form>
-     <label class="form-field"><span>专属安装命令</span><textarea id="install-command" rows="3" readonly spellcheck="false" aria-label="安装命令"></textarea></label><button type="button" id="copy-command" class="subtle-btn">复制命令</button><p class="field-hint">命令包含一次性显示的认证令牌，不要公开分享；执行后建议清理终端历史记录。</p>
+     <form id="create-node" class="settings-form"><label class="form-field form-wide"><span>Monitor 服务器地址</span><input id="server-url" placeholder="https://monitor.example.com" type="url" required></label><label class="form-field"><span>安装平台</span><select id="install-target" aria-label="Agent 安装平台"><option value="linux">Linux (AMD64 / ARM64)</option><option value="windows">Windows (x64)</option></select></label><div class="form-actions"><button type="submit" class="primary-btn">一键生成安装命令</button><span id="create-status" class="form-feedback" role="status"></span></div></form>
+     <label class="form-field"><span>专属安装命令</span><textarea id="install-command" rows="3" readonly spellcheck="false" aria-label="安装命令"></textarea></label><button type="button" id="copy-command" class="subtle-btn">复制命令</button><p class="field-hint">Linux 在 root 终端执行；Windows 请使用管理员 PowerShell。安装命令包含节点认证令牌，不要分享或保留在公开历史记录中。</p>
     </section>
    </div>
    <div class="settings-pane" id="settings-limits" role="tabpanel" hidden>
