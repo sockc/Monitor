@@ -199,7 +199,7 @@ footer{padding:22px 0!important;font-size:11px!important;color:#718aa9!important
 #view-overview .dashboard-node .resource-numbers small{color:#92a9c4;font-size:10px;white-space:nowrap}
 #view-overview .dashboard-node .resource-numbers b{color:#e7f1ff;font-size:12px;font-weight:700;min-width:27px;text-align:right}
 #view-overview .dashboard-node .bar{height:6px!important;background:#293c54;border-radius:5px!important}
-#view-overview .dashboard-node .fill{background:#68aaf2}.dashboard-node .resource-line:nth-child(2) .fill{background:#9a84ef!important}.dashboard-node .resource-line:nth-child(3) .fill{background:#41cbb5!important}
+#view-overview .dashboard-node .fill{background:#68aaf2}#view-overview .dashboard-node .resource-line:nth-child(2) .fill{background:#9a84ef!important}#view-overview .dashboard-node .resource-line:nth-child(3) .fill{background:#41cbb5!important}
 #view-overview .dashboard-node .fill.hot{background:#f4be64!important}#view-overview .dashboard-node .fill.critical{background:#ef7383!important}
 #view-overview .dashboard-node .node-activity{display:flex;align-items:center;justify-content:space-between;gap:5px;margin:13px 0 0!important;padding:10px 0!important;border-top:1px solid #2b4058!important;color:#99b1cc;font-size:10px!important}
 #view-overview .dashboard-node .node-activity span{min-width:0;white-space:nowrap}#view-overview .dashboard-node .node-activity .uptime{color:#9bb2cd}
