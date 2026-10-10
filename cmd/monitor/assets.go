@@ -966,7 +966,8 @@ function renderNode(n){
  const price=p>0?p.toLocaleString('en-US',{maximumFractionDigits:2})+' '+esc(profile.price_currency||'USD')+'/'+cycle:'';
  const expiration=expiryInfo(period,profile);
  const priceRow=price||expiration?'<div class="card-plan">'+(price?'<span class="plan-price">'+price+'</span>':'')+expiration+'</div>':'';
- const metrics='<div class="metric-five">'+metricFive('CPU',online?Number(n.cpu).toFixed(1)+'%':'—',n.cpu,'percent')+metricFive('内存',online?Number(n.memory).toFixed(1)+'%':'—',n.memory,'percent')+metricFive('存储',online?Number(n.disk).toFixed(1)+'%':'—',n.disk,'percent')+metricFive('上传',online?compactSpeed(n.tx_speed):'—',0,'speed')+metricFive('下载',online?compactSpeed(n.rx_speed):'—',0,'speed')+'</div>';
+ const chosen=['cpu','memory','disk','speed'].filter(key=>cardFieldOn(currentLayout,key));
+ const metrics='<div class="metric-five" style="grid-template-columns:repeat('+Math.max(1,chosen.length+(chosen.includes('speed')?1:0))+',minmax(0,1fr))">'+(chosen.includes('cpu')?metricFive('CPU',online?Number(n.cpu).toFixed(1)+'%':'—',n.cpu,'percent'):'')+(chosen.includes('memory')?metricFive('内存',online?Number(n.memory).toFixed(1)+'%':'—',n.memory,'percent'):'')+(chosen.includes('disk')?metricFive('存储',online?Number(n.disk).toFixed(1)+'%':'—',n.disk,'percent'):'')+(chosen.includes('speed')?metricFive('上传',online?compactSpeed(n.tx_speed):'—',0,'speed')+metricFive('下载',online?compactSpeed(n.rx_speed):'—',0,'speed'):'')+'</div>';
  const cumulative='<div class="card-cumulative"><span>↑ 累计上传 <b>'+binaryAmount(n.tx_bytes||0)+'</b></span><span>↓ 累计下载 <b>'+binaryAmount(n.rx_bytes||0)+'</b></span></div>';
  const port=planPort(profile.port_mbps);
  const tags=(port?'<span class="plan-tag tag-bandwidth">'+port+'</span>':'')+(Number(period.quota_gb)>0?'<span class="plan-tag tag-quota">'+planAmountGB(period.quota_gb)+'/月</span>':'')+ipCapability('IPv4',profile.has_ipv4??-1,n.public_ipv4||'','tag-ip4')+ipCapability('IPv6',profile.has_ipv6??-1,n.public_ipv6||'','tag-ip6');
@@ -983,18 +984,20 @@ function renderNode(n){
  const boot=nodeBootDate(n.boot_time);
  const bootLine=boot?'<div class="node-boot-line"><span>开机 <time datetime="'+esc(n.boot_time)+'">'+esc(boot)+'</time></span>'+(nodeUptime(n.uptime)?'<span>'+esc(nodeUptime(n.uptime))+'</span>':'')+'</div>':'';
  const infoButton='<button type="button" class="node-info-trigger" data-info-node="'+id+'" aria-label="查看 '+name+' 的机器基本信息" aria-controls="node-quick-info" aria-expanded="false" title="机器基本信息">!</button>';
+ const favButton='<button type="button" class="node-favorite-trigger '+(n.favorite?'is-favorite':'')+'" data-fav-node="'+id+'" aria-label="'+(n.favorite?'取消收藏 ':'收藏 ')+name+'" title="'+(n.favorite?'取消收藏':'收藏服务器')+'" aria-pressed="'+Boolean(n.favorite)+'">'+(n.favorite?'★':'☆')+'</button>';
  const cardStart='<article role="button" tabindex="0" data-node="'+id+'" class="node dashboard-node glass-node '+(online?'':'node-offline')+'" aria-label="查看 '+name+' 详情">';
  if(currentLayout==='list'){
-  const listStat=online?'CPU '+Math.round(Number(n.cpu)||0)+'% · 内存 '+Math.round(Number(n.memory)||0)+'% · 存储 '+Math.round(Number(n.disk)||0)+'%':'上次在线：'+(n.last_seen?esc(new Date(n.last_seen).toLocaleString()):'未知');
-  return cardStart+infoButton+header+'<div class="node-list-summary">'+listStat+'</div>'+alert+'</article>';
+  const parts=[cardFieldOn('list','cpu')?'CPU '+Math.round(Number(n.cpu)||0)+'%':'',cardFieldOn('list','memory')?'内存 '+Math.round(Number(n.memory)||0)+'%':'',cardFieldOn('list','disk')?'存储 '+Math.round(Number(n.disk)||0)+'%':'',cardFieldOn('list','speed')?'↓ '+compactSpeed(n.rx_speed)+' ↑ '+compactSpeed(n.tx_speed):''].filter(Boolean);
+  const listStat=online?parts.join(' · '):'上次在线：'+(n.last_seen?esc(new Date(n.last_seen).toLocaleString()):'未知');
+  return cardStart+favButton+infoButton+header+(listStat?'<div class="node-list-summary">'+listStat+'</div>':'')+(cardFieldOn('list','traffic')&&has?'<div class="compact-month">本月 '+planAmountGB(used/1000000000)+'</div>':'')+alert+'</article>';
  }
  if(currentLayout==='compact'){
   const compactMonthly=quota>0&&has?
    '<div class="compact-month"><span>本月 <b>'+planAmountGB(used/1000000000)+'</b> / '+planAmountGB(period.quota_gb)+'</span><span>'+percentLabel(ratio)+'</span></div><div class="compact-quota"><i class="'+(ratio>=100?'danger':ratio>=80?'warn':'')+'" style="width:'+clamp.toFixed(1)+'%"></i></div>':
    has?'<div class="compact-month"><span>本月流量</span><b>'+planAmountGB(used/1000000000)+'</b></div>':'';
-  return cardStart+infoButton+header+metrics+compactMonthly+alert+'</article>';
+  return cardStart+favButton+infoButton+header+(chosen.length?metrics:'')+(cardFieldOn('compact','price')?priceRow:'')+(cardFieldOn('compact','traffic')?compactMonthly:'')+(cardFieldOn('compact','boot')?bootLine:'')+alert+'</article>';
  }
- return cardStart+infoButton+header+priceRow+metrics+cumulative+labels+quotaBar+bootLine+alert+'</article>';
+ return cardStart+favButton+infoButton+header+(cardFieldOn('cards','price')?priceRow:'')+(chosen.length?metrics:'')+(cardFieldOn('cards','cumulative')?cumulative:'')+(cardFieldOn('cards','tags')?labels:'')+(cardFieldOn('cards','traffic')?quotaBar:'')+(cardFieldOn('cards','boot')?bootLine:'')+alert+'</article>';
 }
 async function alertsLoad(){try{const r=await fetch('/api/v1/alerts');if(!r.ok)return;const d=await r.json(),a=d.settings;$('a-offline').value=a.offline_seconds;$('a-cpu').value=a.cpu_threshold;$('a-memory').value=a.memory_threshold;$('a-disk').value=a.disk_threshold;$('a-duration').value=a.duration_seconds;$('a-webhook').value=a.webhook||'';renderAlerts(d.events)}catch(e){$('alerts-status').textContent=e.message}}
 function alertName(k){return ({quota_80:'月流量达到 80%',quota_90:'月流量达到 90%',quota_100:'月流量达到 100%',expiry_30:'30 天内到期',expiry_15:'15 天内到期',expiry_7:'7 天内到期',expiry_overdue:'服务器已到期'})[k]||k}
@@ -1041,6 +1044,8 @@ if(points.length>0){const min=points[0].time,max=Math.max(min+1,points[points.le
 $('detail-chart-status').textContent='CPU（蓝） · 内存（紫） · 磁盘（青） · '+points.length+' 个区间';
 $('detail-traffic').textContent='接收 ↓ '+formatBytes(traffic.rx)+'　发送 ↑ '+formatBytes(traffic.tx)+'（采样估算）'}catch(e){$('detail-chart-status').textContent='历史数据加载失败：'+e.message}}
 $('nodes').addEventListener('click',e=>{
+ const fav=e.target.closest('[data-fav-node]');
+ if(fav){e.stopPropagation();const id=fav.dataset.favNode,node=cachedNodes.find(n=>n.name===id);if(node){fav.disabled=true;saveNodeFavorite(id,!node.favorite).catch(err=>{fav.disabled=false;alert('收藏失败：'+err.message)})}return}
  const info=e.target.closest('.node-info-trigger');
  if(info){
   e.stopPropagation();const id=info.dataset.infoNode;
@@ -1050,7 +1055,7 @@ $('nodes').addEventListener('click',e=>{
  const card=e.target.closest('[data-node]');if(card){hideNodeInfo();openNode(card.dataset.node)}
 });
 $('nodes').addEventListener('keydown',e=>{
- if(e.target.closest('.node-info-trigger'))return;
+ if(e.target.closest('.node-info-trigger')||e.target.closest('[data-fav-node]')||e.target.closest('[data-group-header]'))return;
  if(e.key==='Enter'||e.key===' '){const card=e.target.closest('[data-node]');if(card){e.preventDefault();hideNodeInfo();openNode(card.dataset.node)}}
 });
 $('nodes').addEventListener('pointerover',e=>{
