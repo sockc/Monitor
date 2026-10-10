@@ -418,7 +418,7 @@ document.querySelectorAll('[data-theme-choice]').forEach(b=>b.addEventListener('
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function metric(label,n){n=Math.max(0,Math.min(100,Number(n)||0));return '<div><div class="metric-row"><span>'+label+'</span><b>'+n.toFixed(1)+'%</b></div><div class="bar"><div class="fill" style="width:'+n+'%"></div></div></div>'}
 function formatBytes(n){if(!n)return '0 B';const units=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<units.length-1){n/=1024;i++}return n.toFixed(i?1:0)+' '+units[i]}
-let prevNames="";let cachedNodes=[];async function refresh(){try{const r=await fetch('/api/v1/nodes',{cache:'no-store'});if(r.status===401){location.href='/login';return}if(!r.ok)throw Error('HTTP '+r.status);const nodes=await r.json();nodes.sort((a,b)=>(a.group||"").localeCompare(b.group||"")||(a.display_name||a.name).localeCompare(b.display_name||b.name));cachedNodes=nodes;if(selectedNode)updateDetail();updateGroupOptions(nodes);const names=nodes.map(n=>n.name).join('|');if(names!==prevNames){prevNames=names;const ed=$("metadata-name"),old=ed.value;ed.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.name,n.name)));if(nodes.some(n=>n.name===old))ed.value=old;loadMetadata();const sel=$('history-name');const manage=$('manage-name');const was=manage.value;manage.replaceChildren(...nodes.map(n=>new Option(n.name,n.name)));if(nodes.some(n=>n.name===was))manage.value=was;const limitSelect=$('limit-name'),previousLimit=limitSelect.value;limitSelect.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.name,n.name)));if(nodes.some(n=>n.name===previousLimit))limitSelect.value=previousLimit;fillLimitsForm();const previousHistoryName=sel.value;sel.replaceChildren(...nodes.map(n=>new Option(n.name,n.name)));if(nodes.some(n=>n.name===previousHistoryName))sel.value=previousHistoryName;drawHistory();}const up=nodes.filter(n=>n.online).length;$('total').textContent=nodes.length;$('online').textContent=up;$('offline').textContent=nodes.length-up;$('overview-hint').textContent='共 '+nodes.length+' 台服务器 · '+up+' 在线 · '+(nodes.length-up)+' 离线';renderOverviewNodes();$('updated').textContent='最后刷新 '+new Date().toLocaleTimeString()}catch(e){$('updated').textContent='获取失败：'+e.message}}
+let prevNames="";let cachedNodes=[];async function refresh(){try{const r=await fetch('/api/v1/nodes',{cache:'no-store'});if(r.status===401){location.href='/login';return}if(!r.ok)throw Error('HTTP '+r.status);const nodes=await r.json();nodes.sort((a,b)=>(a.group||"").localeCompare(b.group||"")||(a.display_name||a.name).localeCompare(b.display_name||b.name));cachedNodes=nodes;if(selectedNode)updateDetail();updateGroupOptions(nodes);const names=nodes.map(n=>n.name).join('|');if(names!==prevNames){prevNames=names;const ed=$("metadata-name"),old=ed.value;ed.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.name,n.name)));if(nodes.some(n=>n.name===old))ed.value=old;loadMetadata();const sel=$('history-name');const limitSelect=$('limit-name'),previousLimit=limitSelect.value;limitSelect.replaceChildren(...nodes.map(n=>new Option(n.display_name||n.name,n.name)));if(nodes.some(n=>n.name===previousLimit))limitSelect.value=previousLimit;fillLimitsForm();const previousHistoryName=sel.value;sel.replaceChildren(...nodes.map(n=>new Option(n.name,n.name)));if(nodes.some(n=>n.name===previousHistoryName))sel.value=previousHistoryName;drawHistory();}renderNodeEditorRows(nodes);const up=nodes.filter(n=>n.online).length;$('total').textContent=nodes.length;$('online').textContent=up;$('offline').textContent=nodes.length-up;$('overview-hint').textContent='共 '+nodes.length+' 台服务器 · '+up+' 在线 · '+(nodes.length-up)+' 离线';renderOverviewNodes();$('updated').textContent='最后刷新 '+new Date().toLocaleTimeString()}catch(e){$('updated').textContent='获取失败：'+e.message}}
 async function drawHistory(){const name=$('history-name').value;if(!name)return;try{const r=await fetch('/api/v1/history?name='+encodeURIComponent(name)+'&hours='+encodeURIComponent($('history-hours').value));if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();const canvas=$('history-chart');const ctx=canvas.getContext('2d');const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#34455e';ctx.lineWidth=1;for(let y=0;y<=100;y+=25){const py=20+(100-y)/100*(h-50);ctx.beginPath();ctx.moveTo(40,py);ctx.lineTo(w-15,py);ctx.stroke();ctx.fillStyle='#a6b5c9';ctx.font='12px sans-serif';ctx.fillText(y+'%',4,py+4)}const metric=$('history-metric').value;if(data.length){const lo=data[0].time,hi=Math.max(lo+1,data[data.length-1].time);ctx.beginPath();ctx.strokeStyle='#47a0f5';ctx.lineWidth=2;data.forEach((p,i)=>{const x=40+(p.time-lo)/(hi-lo)*(w-55),y=20+(100-p[metric])/100*(h-50);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}$('history-status').textContent=data.length+' 个采样区间';drawTraffic()}catch(e){$('history-status').textContent=e.message}}
 ['history-name','history-hours','history-metric'].forEach(k=>document.addEventListener('change',e=>{if(e.target.id===k)drawHistory()}));async function drawTraffic(){const name=$('history-name').value;if(!name)return;try{const r=await fetch('/api/v1/traffic?name='+encodeURIComponent(name)+'&hours='+encodeURIComponent($('history-hours').value));if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();$('traffic-summary').textContent='接收 ↓ '+formatBytes(d.rx)+' · 发送 ↑ '+formatBytes(d.tx)+'（统计范围内的采样增量）';const max=Math.max(1,...d.buckets.map(b=>b.rx+b.tx));$('traffic-bars').innerHTML=d.buckets.slice(-24).map(b=>'<div class="item"><span>'+new Date(b.time*1000).toLocaleString()+'</span><div class="track"><div class="value" style="width:'+Math.round((b.rx+b.tx)/max*100)+'%"></div></div><span>'+formatBytes(b.rx+b.tx)+'</span></div>').join('')}catch(e){$('traffic-summary').textContent=e.message}}
 function switchSettingsTab(tab){document.querySelectorAll('.settings-tab').forEach(b=>{const selected=b.dataset.settingsTab===tab;b.classList.toggle('selected',selected);b.setAttribute('aria-selected',String(selected));b.tabIndex=0});document.querySelectorAll('.settings-pane').forEach(p=>p.hidden=p.id!=='settings-'+tab)}
@@ -428,10 +428,98 @@ $('add-node').addEventListener('click',()=>toggleAddPanel(true));
 $('show-add-node').addEventListener('click',()=>toggleAddPanel(true));
 $('hide-add-node').addEventListener('click',()=>{$('add-panel').hidden=true;$('show-add-node').focus()});
 switchSettingsTab('nodes');
-$('create-node').addEventListener('submit',async e=>{e.preventDefault();const name=$('node-name').value.trim(),url=$('server-url').value.trim().replace(/\/$/,'');if(!/^[a-zA-Z0-9_-]{1,64}$/.test(name)||!/^https:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?$/.test(url)){$('create-status').textContent='需要合法节点名称和 HTTPS 域名';return}if(!confirm('确定创建或轮换节点 '+name+' 的令牌吗？旧令牌会立即失效。'))return;try{const r=await fetch('/api/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json();const installer='https://raw.githubusercontent.com/sockc/Monitor/main/scripts/install-release.sh';$('install-command').value='curl -fsSL '+installer+' -o monitor-install.sh && sudo env MONITOR_SERVER='+url+' MONITOR_NODE_NAME='+name+' MONITOR_AGENT_TOKEN='+data.token+' bash monitor-install.sh agent';$('create-status').textContent='专属命令已生成，请妥善保管（令牌仅显示一次）';refresh()}catch(err){$('create-status').textContent=err.message}});
-$('copy-command').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('install-command').value);$('create-status').textContent='已复制到剪贴板'}catch(e){$('create-status').textContent='复制失败，请手动复制'}});
-async function manage(action){const name=$('manage-name').value;if(!name)return;let new_name='';if(action==='rename'){new_name=$('rename-target').value.trim();if(!/^[a-zA-Z0-9_-]{1,64}$/.test(new_name)){$('manage-status').textContent='新名称无效';return}}if(!confirm('确认对 '+name+' 执行 '+action+'？此操作可能造成 Agent 离线。'))return;try{const r=await fetch('/api/v1/node-manage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,name,new_name})});if(!r.ok)throw Error(await r.text());$('manage-status').textContent='操作成功。重命名后需重新签发令牌并更新 Agent。';prevNames='';refresh()}catch(e){$('manage-status').textContent=e.message}}
-$('rename-node').addEventListener('click',()=>manage('rename'));$('revoke-node').addEventListener('click',()=>manage('revoke'));$('delete-node').addEventListener('click',()=>manage('delete'));
+function generatedInstallCommand(url,id,token){
+ return 'curl -fsSL https://raw.githubusercontent.com/sockc/Monitor/main/scripts/install-release.sh -o monitor-install.sh && sudo env MONITOR_SERVER='+url+' MONITOR_NODE_NAME='+id+' MONITOR_AGENT_TOKEN='+token+' bash monitor-install.sh agent';
+}
+function generatedReconnectCommand(url,id,token){
+ return 'curl -fsSL https://raw.githubusercontent.com/sockc/Monitor/main/scripts/rebind-agent.sh -o /tmp/monitor-rebind.sh && sudo env MONITOR_SERVER='+url+' MONITOR_NODE_NAME='+id+' MONITOR_AGENT_TOKEN='+token+' bash /tmp/monitor-rebind.sh';
+}
+$('create-node').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const url=$('server-url').value.trim().replace(/\\/$/,'');
+ if(!/^https:\\/\\/[a-zA-Z0-9.-]+(?::[0-9]+)?$/.test(url)){$('create-status').textContent='请输入合法的 HTTPS Server 地址';return}
+ try{
+  const r=await fetch('/api/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  if(!r.ok)throw Error('HTTP '+r.status);
+  const data=await r.json();
+  $('install-command').value=generatedInstallCommand(url,data.name,data.token);
+  $('create-status').textContent='节点已创建（随机 ID '+data.name+'），复制命令到新 VPS 安装即可。';
+  await refresh()
+ }catch(err){$('create-status').textContent='创建失败：'+err.message}
+});
+$('copy-command').addEventListener('click',async()=>{
+ try{await navigator.clipboard.writeText($('install-command').value);$('create-status').textContent='已复制到剪贴板'}
+ catch(e){$('create-status').textContent='复制失败，请手动复制'}
+});
+let editorSignature='';
+function renderNodeEditorRows(nodes,force=false){
+ const area=$('node-editor-list');
+ if(!area)return;
+ const signature=nodes.map(n=>[n.name,n.display_name,n.group,n.manual_location,n.online].join('|')).join('\\n');
+ if(!force&&signature===editorSignature)return;
+ if(!force&&area.contains(document.activeElement))return;
+ editorSignature=signature;
+ if(!nodes.length){area.innerHTML='<p class="field-hint">暂无节点，请点击右上角「添加节点」自动生成。</p>';return}
+ area.innerHTML=nodes.map(n=>{
+  const id=esc(n.name),label=esc(n.display_name||n.name),group=esc(n.group||''),loc=esc(n.manual_location||'');
+  return '<div class="node-edit-row" data-edit-node="'+id+'">'+
+   '<div class="edit-node-identity"><span class="edit-node-state '+(n.online?'on':'off')+'"></span><span><strong>'+label+'</strong><small title="固定节点 ID">ID: '+id+'</small></span></div>'+
+   '<label><span class="node-edit-mobile-label">首页名称</span><input class="row-display" maxlength="60" placeholder="首页显示名称" aria-label="'+id+' 的首页名称" value="'+esc(n.display_name||'')+'"></label>'+
+   '<label><span class="node-edit-mobile-label">分组</span><input class="row-group" maxlength="40" placeholder="分组" aria-label="'+id+' 的分组" value="'+group+'"></label>'+
+   '<label><span class="node-edit-mobile-label">位置</span><input class="row-location" maxlength="80" placeholder="自动 IP 位置" aria-label="'+id+' 的手动位置" value="'+loc+'"></label>'+
+   '<div class="node-edit-actions"><button type="button" data-node-action="save" class="primary-btn">保存</button><button type="button" data-node-action="advanced" class="subtle-btn">详细配置</button><button type="button" data-node-action="rebind" class="subtle-btn">重新连接</button><button type="button" data-node-action="delete" class="danger-btn">删除</button></div>'+
+   '<div class="row-feedback" aria-live="polite"></div></div>'
+ }).join('')
+}
+function showAdvancedNode(id){
+ const sel=$('metadata-name');
+ if(![...sel.options].some(o=>o.value===id))return;
+ sel.value=id;loadMetadata();$('metadata-advanced').hidden=false;$('metadata-advanced').scrollIntoView({behavior:'smooth',block:'start'});$('metadata-display').focus()
+}
+$('metadata-advanced-close').addEventListener('click',()=>{$('metadata-advanced').hidden=true});
+$('node-rebind-close').addEventListener('click',()=>{$('node-rebind-panel').hidden=true;$('node-rebind-command').value=''});
+$('node-rebind-copy').addEventListener('click',async()=>{
+ try{await navigator.clipboard.writeText($('node-rebind-command').value);$('node-rebind-status').textContent='已复制；请到对应 VPS 执行'}
+ catch(e){$('node-rebind-status').textContent='复制失败，请手动复制'}
+});
+$('node-editor-list').addEventListener('click',async e=>{
+ const btn=e.target.closest('button[data-node-action]');if(!btn)return;
+ const row=btn.closest('[data-edit-node]');if(!row)return;
+ const id=row.dataset.editNode,action=btn.dataset.nodeAction,feedback=row.querySelector('.row-feedback');
+ const node=cachedNodes.find(n=>n.name===id);if(!node)return;
+ if(action==='advanced'){showAdvancedNode(id);return}
+ if(action==='save'){
+  btn.disabled=true;
+  const payload={name:id,display_name:row.querySelector('.row-display').value.trim(),group:row.querySelector('.row-group').value.trim(),location:row.querySelector('.row-location').value.trim(),notes:node.notes||''};
+  try{
+   const r=await fetch('/api/v1/node-metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+   if(!r.ok)throw Error(await r.text());feedback.textContent='已保存，Agent 不需要重新连接';await refresh();renderNodeEditorRows(cachedNodes,true)
+  }catch(error){feedback.textContent='保存失败：'+error.message}finally{btn.disabled=false}
+  return
+ }
+ if(action==='rebind'){
+  if(!confirm('重新连接 '+(node.display_name||id)+' 会轮换令牌，旧 Agent 必须执行新命令。确定继续吗？'))return;
+  btn.disabled=true;
+  try{
+   const r=await fetch('/api/v1/node-rebind',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:id})});
+   if(!r.ok)throw Error(await r.text());
+   const data=await r.json();
+   $('node-rebind-command').value=generatedReconnectCommand(location.origin,data.name,data.token);
+   $('node-rebind-status').textContent='节点 '+(node.display_name||id)+' 的命令已生成';
+   $('node-rebind-panel').hidden=false;
+   $('node-rebind-panel').scrollIntoView({behavior:'smooth',block:'nearest'})
+  }catch(error){feedback.textContent='重新连接失败：'+error.message}finally{btn.disabled=false}
+  return
+ }
+ if(action==='delete'){
+  if(prompt('删除将永久清除节点历史。请输入固定节点 ID '+id+' 确认删除：')!==id)return;
+  btn.disabled=true;
+  try{
+   const r=await fetch('/api/v1/node-manage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',name:id})});
+   if(!r.ok)throw Error(await r.text());prevNames='';editorSignature='';await refresh()
+  }catch(error){feedback.textContent='删除失败：'+error.message}finally{btn.disabled=false}
+ }
+});
 function fillPlanLimits(name){const v=nodeLimitsCache[name]||{};$("metadata-quota").value=v.quota_gb||0;$("metadata-expires").value=v.expires_on||""}
 function loadMetadata(){const n=cachedNodes.find(x=>x.name===$("metadata-name").value);if(!n)return;
  const p=n.profile||{};
