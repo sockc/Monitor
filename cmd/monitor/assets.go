@@ -1,12 +1,13 @@
 package main
 
-import "net/http"
+import ("net/http";"strings")
 
 func init() {
  // The main server uses this handler at /static/ to serve embedded assets.
 }
 func staticHandler() http.Handler {
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if strings.HasPrefix(r.URL.Path,"/static/flags/"){serveFlagSVG(w,r);return}
   switch r.URL.Path{
   case "/static/style.css":w.Header().Set("Content-Type","text/css; charset=utf-8");w.Write([]byte(styleCSS))
   case "/static/app.js":w.Header().Set("Content-Type","application/javascript; charset=utf-8");w.Write([]byte(appJS))
