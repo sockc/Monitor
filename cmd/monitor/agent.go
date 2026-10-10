@@ -14,7 +14,8 @@ import (
  "sync"
  "time"
 )
-func runAgent(server,name,token string,interval time.Duration){
+func runAgent(server,name,token string,interval time.Duration){runAgentContext(context.Background(),server,name,token,interval)}
+func runAgentContext(parent context.Context,server,name,token string,interval time.Duration){
  if server==""{server=os.Getenv("MONITOR_SERVER")}
  if !strings.HasPrefix(server,"https://")&&!strings.HasPrefix(server,"http://127.0.0.1:"){log.Fatal("MONITOR_SERVER must use HTTPS (or localhost for testing)")}
  if name==""{name=os.Getenv("MONITOR_NODE_NAME")};if name==""{name,_=os.Hostname()};if name==""{log.Fatal("name is required")}
@@ -49,14 +50,14 @@ func runAgent(server,name,token string,interval time.Duration){
   sample.PublicIP=snapshot.geo.IP;sample.AutoLocation=snapshot.geo.Location;sample.CountryCode=snapshot.geo.CountryCode
   sample.PublicIPv4=snapshot.ipv4;sample.PublicIPv6=snapshot.ipv6
   b,e:=json.Marshal(sample);if e!=nil{return}
-  ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
+  ctx,cancel:=context.WithTimeout(parent,10*time.Second);defer cancel()
   req,e:=http.NewRequestWithContext(ctx,"POST",strings.TrimRight(server,"/")+"/api/v1/ingest",bytes.NewReader(b));if e!=nil{log.Print(e);return}
   req.Header.Set("Authorization","Bearer "+token);req.Header.Set("Content-Type","application/json")
   resp,e:=client.Do(req);if e!=nil{log.Printf("report: %v",e);return};defer resp.Body.Close();io.Copy(io.Discard,io.LimitReader(resp.Body,1024))
   if resp.StatusCode!=204{log.Printf("server rejected sample: HTTP %d",resp.StatusCode)}
  }
  log.Printf("agent %s started",name);send()
- ticker:=time.NewTicker(interval);defer ticker.Stop();for range ticker.C{send()}
+ ticker:=time.NewTicker(interval);defer ticker.Stop();for {select {case <-parent.Done():return;case <-ticker.C:send()}}
 }
 
 type agentGeo struct{IP string;Location string;CountryCode string}
