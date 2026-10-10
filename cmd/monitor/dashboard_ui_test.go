@@ -17,8 +17,8 @@ func TestDashboardUIControls(t *testing.T) {
   "settings-nodes", "settings-limits", "settings-alerts", "settings-account",
   "show-add-node", "hide-add-node", "add-panel", "theme-select", "settings-appearance", "create-node",
   "metadata-form", "metadata-name", "metadata-display", "metadata-group", "metadata-location", "metadata-provider", "metadata-country", "metadata-price", "metadata-currency", "metadata-cycle", "metadata-port", "metadata-ipv4", "metadata-ipv6", "metadata-start", "metadata-expires", "metadata-quota",
-  "metadata-notes", "metadata-auto-location", "metadata-status", "manage-name", "rename-target",
-  "rename-node", "revoke-node", "delete-node", "manage-status",
+  "metadata-notes", "metadata-auto-location", "metadata-status", "node-editor-list", "metadata-advanced", "metadata-advanced-close",
+  "node-rebind-panel", "node-rebind-command", "node-rebind-copy", "node-rebind-close", "node-rebind-status",
   "limit-name", "limit-timezone", "limit-quota", "limit-expires",
   "node-limits-form", "limit-status", "alerts-form", "alerts-status",
   "alert-events", "refresh-alerts", "history-chart", "history-name",
@@ -54,5 +54,11 @@ func TestDashboardUIControls(t *testing.T) {
  if !strings.Contains(appJS, "/static/flags/"){t.Error("expected local SVG flag images")}
  if !strings.Contains(appJS,"n.public_ipv4")||!strings.Contains(appJS,"n.public_ipv6"){t.Error("expected both outbound IP families in dashboard")}
  if !strings.Contains(appJS, "card-cumulative"){t.Error("single-row total traffic missing")}
+
+ if strings.Contains(dashboardHTML, `id="node-name"`) || strings.Contains(dashboardHTML, `id="rename-target"`){t.Error("manual node ID editing must not appear in settings")}
+ if strings.Contains(dashboardHTML, `id="rename-node"`){t.Error("identity-renaming button must not appear")}
+ for _,term:=range []string{"renderNodeEditorRows","data-node-action=","/api/v1/node-rebind","generatedInstallCommand"}{
+  if !strings.Contains(appJS,term){t.Errorf("node inventory missing %s",term)}
+ }
 
 }
