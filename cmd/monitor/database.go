@@ -58,6 +58,7 @@ func openDB(path string)(*sql.DB,error){
  "CREATE TABLE IF NOT EXISTS node_limits(name TEXT PRIMARY KEY, timezone TEXT NOT NULL DEFAULT 'UTC', quota_gb REAL NOT NULL DEFAULT 0, expires_on TEXT NOT NULL DEFAULT '')",
  "CREATE TABLE IF NOT EXISTS agent_tokens(name TEXT PRIMARY KEY,hash TEXT NOT NULL)",
  "CREATE TABLE IF NOT EXISTS node_metadata(name TEXT PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '')",
+ "CREATE TABLE IF NOT EXISTS node_favorites(name TEXT PRIMARY KEY, favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN (0,1)))",
  "CREATE TABLE IF NOT EXISTS node_geo(name TEXT PRIMARY KEY,public_ip TEXT NOT NULL DEFAULT '',auto_location TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)",
  "CREATE TABLE IF NOT EXISTS node_profile(name TEXT PRIMARY KEY,provider TEXT NOT NULL DEFAULT '',country_code TEXT NOT NULL DEFAULT '',price_value REAL NOT NULL DEFAULT 0,price_currency TEXT NOT NULL DEFAULT 'USD',billing_cycle TEXT NOT NULL DEFAULT 'year',period_start TEXT NOT NULL DEFAULT '',port_mbps INTEGER NOT NULL DEFAULT 0,has_ipv4 INTEGER NOT NULL DEFAULT -1,has_ipv6 INTEGER NOT NULL DEFAULT -1)",
  }{if _,err=db.Exec(q);err!=nil{db.Close();return nil,fmt.Errorf("schema: %w",err)}}
@@ -150,6 +151,7 @@ func removeNode(ctx context.Context,db *sql.DB,name string)error{
  tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
  if _,err=tx.ExecContext(ctx,"DELETE FROM samples WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_metadata WHERE name=?",name);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"DELETE FROM node_favorites WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_geo WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_profile WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_daily WHERE name=?",name);err!=nil{return err}
@@ -165,6 +167,7 @@ func renameNode(ctx context.Context,db *sql.DB,old,new string)error{
  if err=tx.QueryRowContext(ctx,"SELECT COUNT(*) FROM agent_tokens WHERE name=?",new).Scan(&exists);err!=nil{return err};if exists>0{return fmt.Errorf("target already registered")}
  if _,err=tx.ExecContext(ctx,"UPDATE samples SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE node_metadata SET name=? WHERE name=?",new,old);err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"UPDATE node_favorites SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE node_geo SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE node_profile SET name=? WHERE name=?",new,old);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"UPDATE traffic_daily SET name=? WHERE name=?",new,old);err!=nil{return err}
