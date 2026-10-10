@@ -13,7 +13,7 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <div class="dashboard-toolbar-head"><div class="toolbar-label"><h3>服务器列表</h3><span id="node-visible-count" class="muted">—</span></div><button type="button" class="primary-btn" id="add-node">＋ 添加</button></div>
   <div class="dashboard-filters" role="group" aria-label="搜索、筛选与显示方式">
    <div class="filter-search"><input id="node-search" type="search" aria-label="搜索服务器" placeholder="搜索名称、地区、分组"></div>
-   <div class="filter-selects"><select id="node-group" aria-label="筛选服务器分组"><option value="">全部分组</option></select><select id="node-order" aria-label="排序方式"><option value="name">名称排序</option><option value="offline">离线优先</option><option value="cpu">CPU 由高到低</option></select></div>
+   <div class="filter-selects"><select id="node-group" aria-label="筛选服务器分组"><option value="">全部分组</option></select></div>
    <div class="layout-switch" role="group" aria-label="服务器显示方式"><button type="button" class="layout-button" data-layout="cards">标准</button><button type="button" class="layout-button active" data-layout="compact">紧凑</button><button type="button" class="layout-button" data-layout="list">列表</button></div>
   </div>
  </div>
@@ -59,7 +59,7 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
      <form id="metadata-form" class="settings-form">
       <label class="form-field form-wide node-identity-readonly" hidden><span>节点 ID（系统生成，固定）</span><select id="metadata-name" aria-label="选择服务器"></select></label>
       <label class="form-field"><span>显示名称</span><input id="metadata-display" maxlength="60" placeholder="例如 香港主服务器"></label>
-      <label class="form-field"><span>所属分组</span><input id="metadata-group" maxlength="40" placeholder="例如 香港"></label><label class="form-field"><span>服务器位置（手动覆盖）</span><input id="metadata-location" maxlength="80" placeholder="留空使用 IP 自动定位" autocomplete="off"><small id="metadata-auto-location">等待 Agent 获取公网 IP 位置</small></label>
+      <label class="form-field"><span>所属分组</span><input id="metadata-group" maxlength="40" placeholder="例如 香港"></label><label class="form-field"><span>首页显示顺序</span><input id="metadata-sort" type="number" min="0" max="9999" step="1" placeholder="0"><small>数字越小越靠前；相同则按名称排序</small></label><label class="form-field"><span>服务器位置（手动覆盖）</span><input id="metadata-location" maxlength="80" placeholder="留空使用 IP 自动定位" autocomplete="off"><small id="metadata-auto-location">等待 Agent 获取公网 IP 位置</small></label>
       <div class="form-section-title form-wide"><strong>套餐与线路</strong><small>价格、G 口和 IP 支持由你确认填写，避免误识别</small></div>
       <label class="form-field"><span>服务商</span><input id="metadata-provider" maxlength="80" placeholder="例如 CloudCone / Oracle"></label>
       <label class="form-field"><span>国家代码（国旗）</span><input id="metadata-country" maxlength="2" placeholder="留空根据 IP 获取，例如 US / HK" autocapitalize="characters"><small>两位英文国家代码；留空自动识别</small></label>
