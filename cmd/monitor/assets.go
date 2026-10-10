@@ -9,7 +9,7 @@ func staticHandler() http.Handler {
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if strings.HasPrefix(r.URL.Path,"/static/flags/"){serveFlagSVG(w,r);return}
   switch r.URL.Path{
-  case "/static/style.css":w.Header().Set("Content-Type","text/css; charset=utf-8");w.Write([]byte(styleCSS))
+  case "/static/style.css":w.Header().Set("Content-Type","text/css; charset=utf-8");w.Write([]byte(styleCSS));w.Write([]byte(mobileRefinementCSS))
   case "/static/app.js":w.Header().Set("Content-Type","application/javascript; charset=utf-8");w.Write([]byte(appJS))
   default:http.NotFound(w,r)
   }
@@ -566,48 +566,6 @@ html[data-theme=dark] #view-overview .node-quick-info .node-info-close{backgroun
 }
 
 
-/* V0.9.10: search and group share one mobile row, distinct node views. */
-#view-overview .dashboard-toolbar{display:flex;flex-direction:column;align-items:stretch;gap:9px}
-#view-overview .dashboard-toolbar-head{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
-#view-overview .dashboard-filters{display:grid!important;grid-template-columns:minmax(0,1.5fr) minmax(110px,.85fr)!important;align-items:center!important;gap:8px!important;justify-content:stretch!important;width:100%!important;flex:none!important}
-#view-overview .dashboard-filters .filter-search{grid-column:1!important;grid-row:1!important;min-width:0!important;max-width:none!important;width:100%!important;flex:none!important}
-#view-overview .dashboard-filters .filter-selects{grid-column:2!important;grid-row:1!important;display:block!important;min-width:0!important;max-width:none!important;width:100%!important;flex:none!important}
-#view-overview .dashboard-filters #node-search,#view-overview .dashboard-filters #node-group{box-sizing:border-box;width:100%!important;min-width:0!important;max-width:none!important;height:40px!important;min-height:40px!important;font-size:12px!important;padding:8px 9px!important;margin:0!important}
-#view-overview .dashboard-filters .layout-switch{grid-column:1/-1!important;grid-row:2!important;width:100%!important;max-width:none!important;display:flex!important;margin:0!important;box-sizing:border-box}
-#view-overview .dashboard-filters .layout-button{flex:1!important}
-#view-overview .server-grid[data-layout=compact] .glass-node .card-identity{margin-bottom:9px!important}
-#view-overview .server-grid[data-layout=compact] .glass-node .metric-five{margin:0 0 8px!important}
-#view-overview .server-grid[data-layout=compact] .glass-node .compact-month{font-size:11px!important}
-#view-overview .server-grid[data-layout=compact] .glass-node .compact-quota{margin:3px 0 0!important}
-#view-overview .server-grid[data-layout=list] .dashboard-node.glass-node{min-height:0!important}
-#view-overview .server-grid[data-layout=list] .glass-node .node-list-summary{font-size:11px!important}
-#view-settings .node-editor-list .row-sort{max-width:100%!important;font-variant-numeric:tabular-nums}
-@media(max-width:779px){
- #view-overview .dashboard-toolbar{gap:8px!important;margin:9px 0 10px!important}
- #view-overview .dashboard-filters{grid-template-columns:minmax(0,1.5fr) minmax(105px,.85fr)!important;gap:7px!important}
- #view-overview .dashboard-filters .filter-search{grid-column:1!important;grid-row:1!important}
- #view-overview .dashboard-filters .filter-selects{grid-column:2!important;grid-row:1!important}
- #view-overview .dashboard-filters .layout-switch{grid-column:1/-1!important;grid-row:2!important}
- #view-overview .summary-strip{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important;margin:0 0 10px!important}
- #view-overview .summary-strip>div{min-height:53px!important;padding:7px 3px!important}
- #view-overview .summary-strip .summary-icon{display:none!important}
- #view-overview .summary-strip small{font-size:10px!important;white-space:nowrap!important}
- #view-overview .summary-strip strong{font-size:19px!important;line-height:1.2!important;margin:2px 0 0!important}
- #view-overview .server-grid[data-layout=compact] .dashboard-node.glass-node{padding:11px 12px!important}
- #view-overview .server-grid[data-layout=compact] .glass-node .card-identity{min-height:35px!important;margin-bottom:8px!important}
- #view-overview .server-grid[data-layout=compact] .glass-node .five-metric{gap:3px!important}
- #view-overview .server-grid[data-layout=compact] .glass-node .five-metric strong{font-size:11px!important}
- #view-overview .server-grid[data-layout=compact] .glass-node .metric-five{margin:0 0 6px!important}
- #view-overview .server-grid[data-layout=list] .dashboard-node.glass-node{padding:9px 12px!important}
- #view-overview .server-grid[data-layout=list] .glass-node .identity-text small{display:none}
-}
-@media(max-width:335px){
- #view-overview .summary-strip{grid-template-columns:repeat(2,minmax(0,1fr))!important}
- #view-overview .dashboard-filters{grid-template-columns:minmax(0,1.1fr) minmax(96px,1fr)!important}
- #view-overview .dashboard-filters input,#view-overview .dashboard-filters select{font-size:11px!important}
-}
-
-@media(min-width:1381px){#view-settings .node-editor-head,#view-settings .node-edit-row{grid-template-columns:minmax(115px,1fr) minmax(125px,1.1fr) minmax(85px,.65fr) minmax(120px,.9fr) minmax(62px,.55fr) minmax(245px,1.8fr)!important}}
 `
 const appJS=`const $=x=>document.getElementById(x);
 const validThemes=['glass','dark','light'];
