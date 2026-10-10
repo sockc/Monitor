@@ -662,7 +662,7 @@ function renderNodeEditorRows(nodes,force=false){
  if(!area)return;
  const signature=nodes.map(n=>[n.name,n.display_name,n.group,n.manual_location,n.sort_order,n.online].join('|')).join('\\n');
  if(!force&&signature===editorSignature)return;
- if(!force&&area.contains(document.activeElement))return;
+ if(!force&&(area.contains(document.activeElement)||area.dataset.dirty==='true'))return;
  editorSignature=signature;
  if(!nodes.length){area.innerHTML='<p class="field-hint">暂无节点，请点击右上角「添加节点」自动生成。</p>';return}
  area.innerHTML=nodes.map(n=>{
@@ -688,6 +688,7 @@ $('node-rebind-copy').addEventListener('click',async()=>{
  try{await navigator.clipboard.writeText($('node-rebind-command').value);$('node-rebind-status').textContent='已复制；请到对应 VPS 执行'}
  catch(e){$('node-rebind-status').textContent='复制失败，请手动复制'}
 });
+$('node-editor-list').addEventListener('input',e=>{if(e.target.matches('input'))$('node-editor-list').dataset.dirty='true'});
 $('node-editor-list').addEventListener('click',async e=>{
  const btn=e.target.closest('button[data-node-action]');if(!btn)return;
  const row=btn.closest('[data-edit-node]');if(!row)return;
@@ -699,7 +700,7 @@ $('node-editor-list').addEventListener('click',async e=>{
   const payload={name:id,display_name:row.querySelector('.row-display').value.trim(),group:row.querySelector('.row-group').value.trim(),location:row.querySelector('.row-location').value.trim(),sort_order:Number(row.querySelector('.row-sort').value),notes:node.notes||''};
   try{
    const r=await fetch('/api/v1/node-metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-   if(!r.ok)throw Error(await r.text());feedback.textContent='已保存，Agent 不需要重新连接';await refresh();renderNodeEditorRows(cachedNodes,true)
+   if(!r.ok)throw Error(await r.text());feedback.textContent='已保存，Agent 不需要重新连接';$('node-editor-list').dataset.dirty='false';await refresh();renderNodeEditorRows(cachedNodes,true)
   }catch(error){feedback.textContent='保存失败：'+error.message}finally{btn.disabled=false}
   return
  }
@@ -774,7 +775,50 @@ function capacity(n){return n>0?formatBytes(n):'—'}
 function hardware(n){return '<div class="hardware-line"><span>'+((n.cpu_cores>0?n.cpu_cores+'C':'—')+' CPU')+'</span><span>内存 '+capacity(n.memory_total)+'</span><span>磁盘 '+capacity(n.disk_total)+'</span></div>'}
 function resourceMetric(label,val,used,total){const v=Math.min(100,Math.max(0,Number(val)||0)),status=v>=90?'critical':v>=75?'hot':'',quantity=total>0?capacity(used)+' / '+capacity(total):'';return '<div class="resource-line"><div class="metric-row"><span>'+label+'</span><span class="resource-numbers">'+(quantity?'<small>'+quantity+'</small>':'')+'<b>'+Math.round(v)+'%</b></span></div><div class="bar"><div class="fill '+status+'" style="width:'+v+'%"></div></div></div>'}
 function resourceWithCapacity(label,pct,used,total){return resourceMetric(label,pct,used,total)}
-function renderOverviewNodes(){const visible=filteredNodes(cachedNodes);$('nodes').innerHTML=visible.map(renderNode).join('')||'<div class="dashboard-empty"><strong>没有匹配的服务器</strong><span>试试修改搜索关键词或切换分组</span></div>';$('node-visible-count').textContent='显示 '+visible.length+' / '+cachedNodes.length+' 台';if(quickInfoNode){if(visible.some(n=>n.name===quickInfoNode))showNodeInfo(quickInfoNode,quickInfoPinned);else hideNodeInfo()}}
+// Incremental patch: retain card DOM, pointer focus and open info popovers while
+// telemetry refreshes every five seconds. Only changed attributes/text are updated.
+function patchDashboardElement(oldNode,newNode){
+ if(oldNode.nodeType!==newNode.nodeType||oldNode.nodeName!==newNode.nodeName){oldNode.replaceWith(newNode.cloneNode(true));return}
+ if(oldNode.nodeType===3){if(oldNode.nodeValue!==newNode.nodeValue)oldNode.nodeValue=newNode.nodeValue;return}
+ if(oldNode.nodeType!==1)return;
+ for(const attr of [...oldNode.attributes])if(!newNode.hasAttribute(attr.name))oldNode.removeAttribute(attr.name);
+ for(const attr of [...newNode.attributes])if(oldNode.getAttribute(attr.name)!==attr.value)oldNode.setAttribute(attr.name,attr.value);
+ let a=oldNode.firstChild,b=newNode.firstChild;
+ while(a||b){
+  if(!a){oldNode.appendChild(b.cloneNode(true));b=b.nextSibling;continue}
+  if(!b){const next=a.nextSibling;a.remove();a=next;continue}
+  const nextA=a.nextSibling,nextB=b.nextSibling;
+  patchDashboardElement(a,b);a=nextA;b=nextB;
+ }
+}
+function renderOverviewNodes(){
+ const visible=filteredNodes(cachedNodes),root=$('nodes');
+ const layoutChanged=root.dataset.renderedLayout!==currentLayout;
+ if(layoutChanged){root.replaceChildren();root.dataset.renderedLayout=currentLayout}
+ if(!visible.length){root.replaceChildren();const empty=document.createElement('div');empty.className='dashboard-empty';empty.innerHTML='<strong>没有匹配的服务器</strong><span>试试修改搜索关键词或切换分组</span>';root.appendChild(empty)}
+ else{
+  const expected=new Set(visible.map(n=>n.name));
+  for(const card of [...root.children])if(!card.dataset.node||!expected.has(card.dataset.node))card.remove();
+  const template=document.createElement('template');
+  for(let i=0;i<visible.length;i++){
+   const n=visible[i];template.innerHTML=renderNode(n);const fresh=template.content.firstElementChild;
+   let existing=[...root.children].find(el=>el.dataset.node===n.name);
+   if(!existing){root.insertBefore(fresh,root.children[i]||null)}
+   else{
+    if(root.children[i]!==existing)root.insertBefore(existing,root.children[i]||null);
+    patchDashboardElement(existing,fresh);
+   }
+  }
+ }
+ $('node-visible-count').textContent='显示 '+visible.length+' / '+cachedNodes.length+' 台';
+ if(quickInfoNode){
+  if(visible.some(n=>n.name===quickInfoNode)){
+   const trigger=[...document.querySelectorAll('.node-info-trigger')].find(b=>b.dataset.infoNode===quickInfoNode);
+   if(trigger)trigger.setAttribute('aria-expanded','true');
+   if(!layoutChanged)positionNodeInfo();else showNodeInfo(quickInfoNode,quickInfoPinned)
+  }else hideNodeInfo()
+ }
+}
 
 function dateInZone(zone){try{const d=new Intl.DateTimeFormat('en-GB',{timeZone:zone||'UTC',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=x=>d.find(y=>y.type===x).value;return get('year')+'-'+get('month')+'-'+get('day')}catch(e){return new Date().toISOString().slice(0,10)}}
 function daysUntil(date,zone){if(!date)return null;return Math.round((Date.parse(date+'T00:00:00Z')-Date.parse(dateInZone(zone)+'T00:00:00Z'))/86400000)}
