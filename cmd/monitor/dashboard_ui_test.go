@@ -10,7 +10,7 @@ import (
 // interactive controls against accidental removal during UI-only releases.
 func TestDashboardUIControls(t *testing.T) {
  ids := []string{
-  "nodes", "add-node", "overview-hint", "node-visible-count", "node-search", "node-group", "node-order", "detail-back", "detail-title", "detail-subtitle",
+  "nodes", "add-node", "overview-hint", "node-visible-count", "node-search", "node-group", "metadata-sort", "detail-back", "detail-title", "detail-subtitle",
   "detail-status", "detail-metrics", "detail-hours", "detail-chart",
   "detail-chart-status", "detail-traffic", "detail-info",
   "detail-network-info", "detail-performance", "detail-network", "detail-system",
@@ -42,6 +42,11 @@ func TestDashboardUIControls(t *testing.T) {
    t.Errorf("missing detail tab %q", v)
   }
  }
+ if strings.Contains(dashboardHTML,`id="node-order"`){t.Error("homepage legacy ordering selector should be removed")}
+ if !strings.Contains(appJS,"function nodeOrder(a,b)"){t.Error("node ordering helper missing")}
+ if !strings.Contains(appJS,"new Option(n.display_name||n.hostname||n.name,n.name)"){t.Error("history options must use readable node names")}
+ if !strings.Contains(appJS,"sort_order:Number(row.querySelector('.row-sort').value)"){t.Error("node row ordering not saved")}
+ if !strings.Contains(styleCSS,".filter-search{grid-column:1!important;grid-row:1!important}"){t.Error("mobile search and group must share a row")}
  if !strings.Contains(styleCSS, "repeat(4,minmax(0,1fr))") { t.Error("desktop dashboard must support four equal columns") }
  if !strings.Contains(appJS, "n.location") { t.Error("dashboard is missing node location") }
  for _,theme:=range []string{"glass","dark","light"}{if !strings.Contains(dashboardHTML, `data-theme-choice="`+theme+`"`){t.Errorf("missing %s theme choice",theme)}}
