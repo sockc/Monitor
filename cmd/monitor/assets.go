@@ -355,9 +355,40 @@ $('create-node').addEventListener('submit',async e=>{e.preventDefault();const na
 $('copy-command').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('install-command').value);$('create-status').textContent='已复制到剪贴板'}catch(e){$('create-status').textContent='复制失败，请手动复制'}});
 async function manage(action){const name=$('manage-name').value;if(!name)return;let new_name='';if(action==='rename'){new_name=$('rename-target').value.trim();if(!/^[a-zA-Z0-9_-]{1,64}$/.test(new_name)){$('manage-status').textContent='新名称无效';return}}if(!confirm('确认对 '+name+' 执行 '+action+'？此操作可能造成 Agent 离线。'))return;try{const r=await fetch('/api/v1/node-manage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,name,new_name})});if(!r.ok)throw Error(await r.text());$('manage-status').textContent='操作成功。重命名后需重新签发令牌并更新 Agent。';prevNames='';refresh()}catch(e){$('manage-status').textContent=e.message}}
 $('rename-node').addEventListener('click',()=>manage('rename'));$('revoke-node').addEventListener('click',()=>manage('revoke'));$('delete-node').addEventListener('click',()=>manage('delete'));
-function loadMetadata(){const n=cachedNodes.find(x=>x.name===$("metadata-name").value);if(!n)return;$("metadata-display").value=n.display_name||"";$("metadata-group").value=n.group||"";$("metadata-location").value=n.manual_location||"";$("metadata-auto-location").textContent=n.auto_location?"IP 自动识别："+n.auto_location+(n.public_ip?"（"+n.public_ip+"）":"")+" · 清空手动位置即可恢复自动识别":n.public_ip?"公网 IP "+n.public_ip+" · 定位暂不可用":"等待 Agent 上报公网 IP 位置；旧 Agent 需升级";$("metadata-notes").value=n.notes||""}
+function fillPlanLimits(name){const v=nodeLimitsCache[name]||{};$("metadata-quota").value=v.quota_gb||0;$("metadata-expires").value=v.expires_on||""}
+function loadMetadata(){const n=cachedNodes.find(x=>x.name===$("metadata-name").value);if(!n)return;
+ const p=n.profile||{};
+ $("metadata-display").value=n.display_name||"";
+ $("metadata-group").value=n.group||"";
+ $("metadata-location").value=n.manual_location||"";
+ $("metadata-auto-location").textContent=n.auto_location?"IP 自动识别："+n.auto_location+(n.public_ip?"（"+n.public_ip+"）":"")+" · 清空手动位置即可恢复自动识别":n.public_ip?"公网 IP "+n.public_ip+" · 定位暂不可用":"等待 Agent 上报公网 IP 位置；旧 Agent 需升级";
+ $("metadata-notes").value=n.notes||"";
+ $("metadata-provider").value=p.provider||"";
+ $("metadata-country").value=p.country_code||"";
+ $("metadata-price").value=p.price_value||0;
+ $("metadata-currency").value=p.price_currency||"USD";
+ $("metadata-cycle").value=p.billing_cycle||"year";
+ $("metadata-port").value=p.port_mbps||0;
+ $("metadata-ipv4").value=String(p.has_ipv4??-1);
+ $("metadata-ipv6").value=String(p.has_ipv6??-1);
+ $("metadata-start").value=p.period_start||"";
+ fillPlanLimits(n.name)
+}
 $("metadata-name").addEventListener("change",loadMetadata);
-$("metadata-form").addEventListener("submit",async e=>{e.preventDefault();const payload={name:$("metadata-name").value,display_name:$("metadata-display").value,group:$("metadata-group").value,location:$("metadata-location").value,notes:$("metadata-notes").value};try{const r=await fetch("/api/v1/node-metadata",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(!r.ok)throw Error(await r.text());$("metadata-status").textContent="已保存";prevNames="";await refresh()}catch(err){$("metadata-status").textContent="保存失败："+err.message}});
+$("metadata-form").addEventListener("submit",async e=>{
+ e.preventDefault();
+ const selected=$("metadata-name").value;
+ const payload={name:selected,display_name:$("metadata-display").value,group:$("metadata-group").value,location:$("metadata-location").value,notes:$("metadata-notes").value,
+  profile:{provider:$("metadata-provider").value.trim(),country_code:$("metadata-country").value.trim().toUpperCase(),price_value:Number($("metadata-price").value),price_currency:$("metadata-currency").value,billing_cycle:$("metadata-cycle").value,period_start:$("metadata-start").value,port_mbps:Number($("metadata-port").value),has_ipv4:Number($("metadata-ipv4").value),has_ipv6:Number($("metadata-ipv6").value)},
+  quota_gb:Number($("metadata-quota").value),expires_on:$("metadata-expires").value
+ };
+ try{
+  const r=await fetch("/api/v1/node-metadata",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  if(!r.ok)throw Error(await r.text());
+  $("metadata-status").textContent="保存成功，套餐与到期数据已同步";
+  prevNames="";await loadNodeLimits();await refresh();await refreshPeriods()
+ }catch(err){$("metadata-status").textContent="保存失败："+err.message}
+});
 function updateGroupOptions(nodes){const el=$('node-group'),value=el.value,groups=[...new Set(nodes.map(n=>n.group).filter(Boolean))].sort();const next=['',...groups];if([...el.options].map(x=>x.value).join('|')!==next.join('|')){el.replaceChildren(new Option('全部分组',''),...groups.map(x=>new Option(x,x)));el.value=value}}
 function filteredNodes(nodes){const q=$('node-search').value.trim().toLowerCase(),group=$('node-group').value,order=$('node-order').value;const out=nodes.filter(n=>(!group||n.group===group)&&(!q||[n.name,n.display_name,n.group,n.location,n.os,n.notes,n.hostname].some(x=>String(x||'').toLowerCase().includes(q))));if(order==='offline')out.sort((a,b)=>Number(a.online)-Number(b.online));if(order==='cpu')out.sort((a,b)=>b.cpu-a.cpu);return out}
 ['node-search','node-group','node-order'].forEach(id=>$(id).addEventListener('input',()=>{renderOverviewNodes()}));
@@ -411,7 +442,7 @@ switchDetailTab('performance');
 $('refresh-alerts').addEventListener('click',refreshAlertEvents);
 $('detail-back').addEventListener('click',()=>switchView('overview'));
 $('detail-hours').addEventListener('change',updateDetailHistory);
-async function loadNodeLimits(){try{const r=await fetch('/api/v1/node-limits',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);nodeLimitsCache=await r.json();fillLimitsForm()}catch(e){$('limit-status').textContent='加载失败：'+e.message}}
+async function loadNodeLimits(){try{const r=await fetch('/api/v1/node-limits',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);nodeLimitsCache=await r.json();fillLimitsForm();if($('metadata-name').value)fillPlanLimits($('metadata-name').value)}catch(e){$('limit-status').textContent='加载失败：'+e.message}}
 function fillLimitsForm(){const name=$('limit-name').value;if(!name)return;const v=nodeLimitsCache[name]||{};$('limit-timezone').value=v.timezone||'UTC';$('limit-quota').value=v.quota_gb||0;$('limit-expires').value=v.expires_on||''}
 $('limit-name').addEventListener('change',fillLimitsForm);
 $('node-limits-form').addEventListener('submit',async e=>{e.preventDefault();const payload={name:$('limit-name').value,timezone:$('limit-timezone').value.trim(),quota_gb:Number($('limit-quota').value),expires_on:$('limit-expires').value};try{const r=await fetch('/api/v1/node-limits',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)throw Error(await r.text());$('limit-status').textContent='已保存';await loadNodeLimits();await refreshPeriods()}catch(err){$('limit-status').textContent='保存失败：'+err.message}});
