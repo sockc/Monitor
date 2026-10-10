@@ -177,7 +177,7 @@ func main(){
  if _,e=tx.ExecContext(r.Context(),"INSERT INTO node_metadata(name,display_name,group_name,location,notes) VALUES(?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET display_name=excluded.display_name,group_name=excluded.group_name,location=excluded.location,notes=excluded.notes",in.Name,in.DisplayName,in.Group,in.Location,in.Notes);e!=nil{http.Error(w,"database error",500);return}
  if in.Profile!=nil{
   p:=in.Profile
-  _,e=tx.ExecContext(r.Context(),"INSERT INTO node_profile(name,provider,country_code,price_value,price_currency,billing_cycle,port_mbps,has_ipv4,has_ipv6) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET provider=excluded.provider,country_code=excluded.country_code,price_value=excluded.price_value,price_currency=excluded.price_currency,billing_cycle=excluded.billing_cycle,port_mbps=excluded.port_mbps,has_ipv4=excluded.has_ipv4,has_ipv6=excluded.has_ipv6",in.Name,p.Provider,p.CountryCode,p.PriceValue,p.PriceCurrency,p.BillingCycle,p.PortMbps,p.HasIPv4,p.HasIPv6)
+  _,e=tx.ExecContext(r.Context(),"INSERT INTO node_profile(name,provider,country_code,price_value,price_currency,billing_cycle,period_start,port_mbps,has_ipv4,has_ipv6) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET provider=excluded.provider,country_code=excluded.country_code,price_value=excluded.price_value,price_currency=excluded.price_currency,billing_cycle=excluded.billing_cycle,period_start=excluded.period_start,port_mbps=excluded.port_mbps,has_ipv4=excluded.has_ipv4,has_ipv6=excluded.has_ipv6",in.Name,p.Provider,p.CountryCode,p.PriceValue,p.PriceCurrency,p.BillingCycle,p.PeriodStart,p.PortMbps,p.HasIPv4,p.HasIPv6)
   if e!=nil{http.Error(w,"database error",500);return}
  }
  if in.QuotaGB!=nil{
