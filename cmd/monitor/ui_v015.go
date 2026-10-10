@@ -104,4 +104,29 @@ const uiV015CSS=`
 }
 #view-overview .glass-node .card-alerts{display:flex;flex-wrap:wrap;gap:5px}
 #view-overview .glass-node .card-alerts span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Overview toolbar: all group and layout controls directly follow Add. */
+#view-overview .dashboard-toolbar-head .dashboard-toolbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+#view-overview .dashboard-toolbar-head .filter-selects{display:block;min-width:110px}
+#view-overview .dashboard-toolbar-head #node-group{height:35px!important;min-height:35px!important;max-width:180px;width:100%;padding:7px 9px!important;font-size:11px!important;border-radius:8px!important;background:#14243a!important;border:1px solid #304863!important;color:#d5e4f8}
+#view-overview .dashboard-toolbar-head .layout-switch{display:flex!important;width:auto!important;margin:0!important;flex:0 0 auto}
+#view-overview .dashboard-toolbar-head .layout-button{height:30px!important;padding:5px 9px!important;font-size:11px!important}
+@media(min-width:1050px){
+ #view-overview .dashboard-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px!important}
+ #view-overview .dashboard-toolbar-head{grid-column:1;grid-row:1;display:flex;flex-wrap:wrap;gap:10px!important;min-width:0}
+ #view-overview .dashboard-toolbar-head #add-node{order:0}
+ #view-overview .overview-quick-filters{grid-column:2;grid-row:1}
+ #view-overview .dashboard-filters{grid-column:1/-1;grid-row:2;display:flex!important;justify-content:stretch!important;width:100%}
+ #view-overview .dashboard-filters .filter-search{flex:1 1 100%;max-width:none!important;width:100%!important}
+ #view-overview .dashboard-filters #node-search{max-width:none!important;width:100%!important}
+}
+@media(max-width:1049px){
+ #view-overview .dashboard-toolbar-head{flex-wrap:wrap!important;height:auto!important}
+ #view-overview .dashboard-toolbar-head .dashboard-toolbar-actions{width:100%;gap:7px}
+ #view-overview .dashboard-toolbar-head .filter-selects{flex:1 1 110px;min-width:100px}
+ #view-overview .dashboard-toolbar-head #node-group{max-width:none}
+ #view-overview .dashboard-filters{display:flex!important;width:100%!important}
+ #view-overview .dashboard-filters .filter-search{flex:1!important;max-width:none!important;width:100%!important}
+ #view-overview .dashboard-filters #node-search{width:100%!important;max-width:none!important}
+}
 `;
