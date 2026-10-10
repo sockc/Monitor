@@ -93,4 +93,15 @@ const uiV015CSS=`
  #view-overview .overview-headline{display:block}
  #view-overview .overview-headline .dashboard-heading{margin-bottom:11px!important}
 }
+
+/* Compact node cards: prioritize metrics, keep actionable warnings visible. */
+@media(min-width:780px){
+ #view-overview .server-grid[data-layout=compact] .dashboard-node.glass-node{padding:12px 13px 11px!important}
+ #view-overview .server-grid[data-layout=compact] .glass-node .card-identity{margin-bottom:8px!important}
+ #view-overview .server-grid[data-layout=compact] .glass-node .metric-five{margin-bottom:7px!important}
+ #view-overview .server-grid[data-layout=compact] .glass-node .compact-month{margin-top:2px!important}
+ #view-overview .server-grid[data-layout=compact] .glass-node .card-alerts{margin-top:7px!important}
+}
+#view-overview .glass-node .card-alerts{display:flex;flex-wrap:wrap;gap:5px}
+#view-overview .glass-node .card-alerts span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 `;
