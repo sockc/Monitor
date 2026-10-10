@@ -675,7 +675,7 @@ function renderNodeEditorRows(nodes,force=false){
  area.innerHTML=nodes.map(n=>{
   const id=esc(n.name),label=esc(n.display_name||n.name),group=esc(n.group||''),loc=esc(n.manual_location||'');
   return '<div class="node-edit-row" data-edit-node="'+id+'">'+
-   '<div class="edit-node-identity"><span class="edit-node-state '+(n.online?'on':'off')+'"></span><span><strong>'+label+'</strong><small title="固定节点 ID">ID: '+id+'</small></span></div>'+
+   '<div class="edit-node-identity"><span class="order-move-controls"><button type="button" class="node-drag-handle" draggable="true" title="拖动调整服务器顺序" aria-label="拖动 '+label+' 排序">⠿</button><button type="button" data-node-action="up" class="node-move" title="上移" aria-label="将 '+label+' 上移">↑</button><button type="button" data-node-action="down" class="node-move" title="下移" aria-label="将 '+label+' 下移">↓</button></span><span class="edit-node-state '+(n.online?'on':'off')+'"></span><span class="edit-node-label"><strong>'+label+'</strong><small title="固定节点 ID">ID: '+id+'</small></span></div>'+
    '<label><span class="node-edit-mobile-label">首页名称</span><input class="row-display" maxlength="60" placeholder="首页显示名称" aria-label="'+id+' 的首页名称" value="'+esc(n.display_name||'')+'"></label>'+
    '<label><span class="node-edit-mobile-label">分组</span><input class="row-group" maxlength="40" placeholder="分组" aria-label="'+id+' 的分组" value="'+group+'"></label>'+
    '<label><span class="node-edit-mobile-label">位置</span><input class="row-location" maxlength="80" placeholder="自动 IP 位置" aria-label="'+id+' 的手动位置" value="'+loc+'"></label>'+
@@ -696,12 +696,56 @@ $('node-rebind-copy').addEventListener('click',async()=>{
  try{await navigator.clipboard.writeText($('node-rebind-command').value);$('node-rebind-status').textContent='已复制；请到对应 VPS 执行'}
  catch(e){$('node-rebind-status').textContent='复制失败，请手动复制'}
 });
+let nodeOrderSaving=false,nodeDraggedID='';
+async function persistNodeOrder(){
+ const area=$('node-editor-list');
+ if(nodeOrderSaving)return;
+ const names=[...area.querySelectorAll('[data-edit-node]')].map(row=>row.dataset.editNode);
+ if(names.length!==cachedNodes.length)return;
+ nodeOrderSaving=true;$('node-order-status').textContent='正在保存顺序…';
+ try{
+  const r=await fetch('/api/v1/node-ui',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reorder',names})});
+  if(!r.ok)throw Error(await r.text());
+  names.forEach((name,i)=>{const n=cachedNodes.find(x=>x.name===name);if(n)n.sort_order=i+1});
+  cachedNodes.sort(nodeOrder);editorSignature='';$('node-order-status').textContent='顺序已同步到服务器';
+  renderNodeEditorRows(cachedNodes,true);renderOverviewNodes();
+ }catch(e){$('node-order-status').textContent='排序失败：'+e.message;editorSignature='';renderNodeEditorRows(cachedNodes,true)}
+ finally{nodeOrderSaving=false}
+}
+$('node-editor-list').addEventListener('dragstart',e=>{
+ const handle=e.target.closest('.node-drag-handle');if(!handle)return;
+ const area=$('node-editor-list');if(area.dataset.dirty==='true'||nodeOrderSaving){e.preventDefault();$('node-order-status').textContent='请先保存节点资料，再调整排序';return}
+ const row=handle.closest('[data-edit-node]');if(!row)return;
+ nodeDraggedID=row.dataset.editNode;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',nodeDraggedID);
+});
+$('node-editor-list').addEventListener('dragover',e=>{
+ if(!nodeDraggedID)return;const target=e.target.closest('[data-edit-node]');if(!target||target.dataset.editNode===nodeDraggedID)return;
+ e.preventDefault();e.dataTransfer.dropEffect='move'
+});
+$('node-editor-list').addEventListener('drop',e=>{
+ if(!nodeDraggedID)return;
+ const target=e.target.closest('[data-edit-node]'),source=[...$('node-editor-list').children].find(x=>x.dataset.editNode===nodeDraggedID);
+ if(target&&source&&target!==source){
+  e.preventDefault();const before=[...$('node-editor-list').children].indexOf(source)<[...$('node-editor-list').children].indexOf(target);
+  $('node-editor-list').insertBefore(source,before?target.nextSibling:target);persistNodeOrder();
+ }
+ nodeDraggedID=''
+});
+$('node-editor-list').addEventListener('dragend',()=>{nodeDraggedID=''});
+
 $('node-editor-list').addEventListener('input',e=>{if(e.target.matches('input'))$('node-editor-list').dataset.dirty='true'});
 $('node-editor-list').addEventListener('click',async e=>{
  const btn=e.target.closest('button[data-node-action]');if(!btn)return;
  const row=btn.closest('[data-edit-node]');if(!row)return;
  const id=row.dataset.editNode,action=btn.dataset.nodeAction,feedback=row.querySelector('.row-feedback');
  const node=cachedNodes.find(n=>n.name===id);if(!node)return;
+ if(action==='up'||action==='down'){
+  if($('node-editor-list').dataset.dirty==='true'||nodeOrderSaving){$('node-order-status').textContent='请先保存节点资料，再调整排序';return}
+  const rows=[...$('node-editor-list').querySelectorAll('[data-edit-node]')],index=rows.indexOf(row),next=rows[index+(action==='up'?-1:1)];
+  if(!next)return;
+  if(action==='up')row.parentNode.insertBefore(row,next);else row.parentNode.insertBefore(next,row);
+  persistNodeOrder();return
+ }
  if(action==='toggle'){const expanded=row.classList.toggle('editing');btn.textContent=expanded?'收起编辑':'编辑节点';btn.setAttribute('aria-expanded',String(expanded));return}
  if(action==='advanced'){showAdvancedNode(id);return}
  if(action==='save'){
