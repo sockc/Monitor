@@ -11,6 +11,7 @@ import (
  "net/http"
  "os"
  "strings"
+ "sync"
  "time"
 )
 func runAgent(server,name,token string,interval time.Duration){
@@ -21,13 +22,32 @@ func runAgent(server,name,token string,interval time.Duration){
  client:=&http.Client{Timeout:10*time.Second}
  prev:=readCPU()
  geoEnabled:=os.Getenv("MONITOR_GEO_ENABLED")!="0"
- var geo agentGeo
- var nextGeo time.Time
- send:=func(){
-  if geoEnabled&&time.Now().After(nextGeo){
-   if discovered,err:=lookupAgentGeo(client);err==nil{geo=discovered;nextGeo=time.Now().Add(12*time.Hour)}else{nextGeo=time.Now().Add(time.Hour);log.Printf("auto location: %v",err)}
+ ipEnabled:=os.Getenv("MONITOR_IP_DETECTION_ENABLED")!="0"
+ type netSnapshot struct{geo agentGeo;ipv4 string;ipv6 string}
+ var mu sync.RWMutex
+ current:=netSnapshot{}
+ // Outbound HTTP checks are intentionally independent of telemetry samples.
+ // Avoid delaying the five-second metrics loop on slow or broken IPv6 routes.
+ if geoEnabled||ipEnabled{go func(){
+  for {
+   mu.RLock();next:=current;mu.RUnlock()
+   if geoEnabled {
+    if discovered,err:=lookupAgentGeo(client);err==nil{next.geo=discovered}else{log.Printf("auto location: %v",err)}
+   }
+   if ipEnabled {
+    next.ipv4="";next.ipv6=""
+    if ip,err:=lookupOutboundIP("4");err==nil{next.ipv4=ip}else{log.Printf("IPv4 outbound detection: %v",err)}
+    if ip,err:=lookupOutboundIP("6");err==nil{next.ipv6=ip}else{log.Printf("IPv6 outbound detection: %v",err)}
+   }
+   mu.Lock();current=next;mu.Unlock()
+   time.Sleep(12*time.Hour)
   }
-  sample,next:=collect(name,prev);prev=next;sample.AgentVersion=monitorVersion;sample.PublicIP=geo.IP;sample.AutoLocation=geo.Location;sample.CountryCode=geo.CountryCode
+ }()}
+ send:=func(){
+  sample,next:=collect(name,prev);prev=next;sample.AgentVersion=monitorVersion
+  mu.RLock();snapshot:=current;mu.RUnlock()
+  sample.PublicIP=snapshot.geo.IP;sample.AutoLocation=snapshot.geo.Location;sample.CountryCode=snapshot.geo.CountryCode
+  sample.PublicIPv4=snapshot.ipv4;sample.PublicIPv6=snapshot.ipv6
   b,e:=json.Marshal(sample);if e!=nil{return}
   ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
   req,e:=http.NewRequestWithContext(ctx,"POST",strings.TrimRight(server,"/")+"/api/v1/ingest",bytes.NewReader(b));if e!=nil{log.Print(e);return}
@@ -66,3 +86,38 @@ func validPublicIP(text string)bool{
  return ip!=nil&&!ip.IsPrivate()&&!ip.IsLoopback()&&!ip.IsLinkLocalUnicast()&&!ip.IsLinkLocalMulticast()&&!ip.IsUnspecified()&&!ip.IsMulticast()
 }
 
+
+func outboundIPClient(family string)*http.Client{
+ transport:=&http.Transport{
+  Proxy:nil, // Do not classify an HTTP proxy's IP as the VPS interface.
+  DialContext:func(ctx context.Context,network,address string)(net.Conn,error){
+   dialer:=&net.Dialer{Timeout:3*time.Second}
+   return dialer.DialContext(ctx,"tcp"+family,address)
+  },
+  TLSHandshakeTimeout:3*time.Second,
+  DisableKeepAlives:true,
+ }
+ return &http.Client{Timeout:4*time.Second,Transport:transport}
+}
+// A successful IPv4/IPv6-specific HTTPS request confirms outbound access.
+// Failure is treated as unknown, not proof the VPS lacks that IP family.
+func lookupOutboundIP(family string)(string,error){
+ client:=outboundIPClient(family)
+ defer client.CloseIdleConnections()
+ return lookupIPFamily(client,family)
+}
+func lookupIPFamily(c *http.Client,family string)(string,error){
+ if family!="4"&&family!="6"{return "",fmt.Errorf("unknown IP family")}
+ ctx,cancel:=context.WithTimeout(context.Background(),4*time.Second);defer cancel()
+ url:="https://api"+family+".ipify.org"
+ req,err:=http.NewRequestWithContext(ctx,http.MethodGet,url,nil);if err!=nil{return "",err}
+ req.Header.Set("User-Agent","Monitor-Agent/"+monitorVersion)
+ resp,err:=c.Do(req);if err!=nil{return "",err};defer resp.Body.Close()
+ if resp.StatusCode!=http.StatusOK{return "",fmt.Errorf("IP family %s service returned HTTP %d",family,resp.StatusCode)}
+ b,err:=io.ReadAll(io.LimitReader(resp.Body,128));if err!=nil{return "",err}
+ ip:=strings.TrimSpace(string(b))
+ parsed:=net.ParseIP(ip)
+ if parsed==nil||!validPublicIP(ip){return "",fmt.Errorf("invalid public IPv%s response",family)}
+ if (family=="4")!=(parsed.To4()!=nil){return "",fmt.Errorf("unexpected IP family")}
+ return ip,nil
+}
