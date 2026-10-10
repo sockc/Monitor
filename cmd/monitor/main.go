@@ -5,9 +5,6 @@ import (
  
  "encoding/json"
  "database/sql"
- "crypto/sha256"
- "encoding/hex"
- "crypto/rand"
  _ "modernc.org/sqlite"
  _ "time/tzdata"
  "flag"
