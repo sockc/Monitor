@@ -470,8 +470,10 @@ function generatedReconnectCommand(url,id,token){
 }
 $('create-node').addEventListener('submit',async e=>{
  e.preventDefault();
- const url=$('server-url').value.trim().replace(/\\/$/,'');
- if(!/^https:\\/\\/[a-zA-Z0-9.-]+(?::[0-9]+)?$/.test(url)){$('create-status').textContent='请输入合法的 HTTPS Server 地址';return}
+ let parsed;try{parsed=new URL($('server-url').value.trim())}catch(error){$('create-status').textContent='Server 地址无效';return}
+ const safeHost=[...parsed.hostname].every(c=>'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-'.includes(c));
+ if(parsed.protocol!=='https:'||!safeHost||!parsed.hostname||parsed.username||parsed.password||parsed.search||parsed.hash||parsed.pathname!=='/'){$('create-status').textContent='请输入完整的 HTTPS Server 域名';return}
+ const url=parsed.origin;
  try{
   const r=await fetch('/api/v1/tokens',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   if(!r.ok)throw Error('HTTP '+r.status);
