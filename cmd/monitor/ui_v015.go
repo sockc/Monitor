@@ -54,4 +54,43 @@ const uiV015CSS=`
 @media(prefers-reduced-motion:reduce){
  #view-overview .dashboard-node,#view-settings .settings-tab,#view-overview .layout-button{transition:none!important;animation:none!important}
 }
+
+/* Desktop dashboard density: title and four status counters share one row. */
+@media(min-width:1050px){
+ body>header{min-height:58px!important;padding-top:9px!important;padding-bottom:9px!important}
+ #view-overview .overview-headline{display:grid;grid-template-columns:minmax(210px,1fr) minmax(520px,auto);align-items:center;gap:18px;margin:0 0 15px}
+ #view-overview .overview-headline .dashboard-heading{display:flex!important;align-items:center!important;gap:12px!important;min-width:0;margin:0!important}
+ #view-overview .overview-headline .dashboard-heading>div:first-child{min-width:0}
+ #view-overview .overview-headline .dashboard-heading h1{font-size:21px!important;margin:0!important}
+ #view-overview .overview-headline #overview-hint{display:none!important}
+ #view-overview .overview-headline .dashboard-updated{font-size:10px!important;white-space:nowrap}
+ #view-overview .overview-headline .summary-strip{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:7px!important;margin:0!important;min-width:0}
+ #view-overview .overview-headline .summary-strip>div{min-height:44px!important;padding:6px 10px!important;gap:5px!important;min-width:0!important;border-radius:9px!important}
+ #view-overview .overview-headline .summary-strip .summary-icon{display:none!important}
+ #view-overview .overview-headline .summary-strip>div>div{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0}
+ #view-overview .overview-headline .summary-strip small{font-size:11px!important;white-space:nowrap!important}
+ #view-overview .overview-headline .summary-strip strong{font-size:19px!important;margin:0!important;font-variant-numeric:tabular-nums}
+ #view-overview .overview-headline #overview-alert-filter{position:static!important;display:inline-flex;align-items:center;justify-content:center;min-width:0;padding:2px 5px!important;margin:0!important;font-size:10px!important}
+ #view-overview .dashboard-toolbar{display:grid!important;grid-template-columns:auto minmax(0,1fr);align-items:center!important;gap:9px 12px!important;margin:0 0 10px!important}
+ #view-overview .dashboard-toolbar-head{grid-column:1;grid-row:1;display:flex;align-items:center;gap:12px}
+ #view-overview .dashboard-toolbar-head #add-node{order:2}
+ #view-overview .overview-quick-filters{grid-column:2;grid-row:1;justify-self:end;margin:0!important}
+ #view-overview .dashboard-filters{grid-column:1/-1;grid-row:2;display:grid!important;grid-template-columns:minmax(180px,1fr) minmax(140px,230px) auto;gap:9px!important;justify-content:stretch!important;width:100%}
+ #view-overview .dashboard-filters .filter-search{min-width:0!important;max-width:none!important;width:100%!important}
+ #view-overview .dashboard-filters #node-search{max-width:none!important;width:100%!important}
+ #view-overview .dashboard-filters .filter-selects{min-width:0!important;max-width:none!important;width:100%!important}
+ #view-overview .dashboard-filters #node-group{max-width:none!important;width:100%!important}
+ #view-overview .dashboard-filters .layout-switch{justify-self:end!important}
+ #view-overview .group-heading{margin-top:8px!important;margin-bottom:8px!important}
+}
+@media(min-width:1050px) and (max-width:1350px){
+ #view-overview .overview-headline{grid-template-columns:minmax(175px,1fr) minmax(480px,1.8fr)}
+ #view-overview .overview-headline .dashboard-updated{display:none!important}
+ #view-overview .overview-headline .summary-strip>div{padding:6px!important}
+ #view-overview .overview-headline .summary-strip small{font-size:10px!important}
+}
+@media(max-width:1049px){
+ #view-overview .overview-headline{display:block}
+ #view-overview .overview-headline .dashboard-heading{margin-bottom:11px!important}
+}
 `;
