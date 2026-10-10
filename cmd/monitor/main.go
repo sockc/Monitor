@@ -32,7 +32,7 @@ func validIPFamily(raw string,family int)bool{
  return false
 }
 
-const monitorVersion="v0.9.9"
+const monitorVersion="v0.9.16"
 type Sample struct {
  Name string `json:"name"`
  Hostname string `json:"hostname"`
@@ -80,6 +80,24 @@ func (s *Store) save() error {
 }
 func env(k, fallback string)string {if x:=os.Getenv(k);x!=""{return x};return fallback}
 func equal(a,b string)bool{return subtle.ConstantTimeCompare([]byte(a),[]byte(b))==1}
+// loadAgentConfig accepts a tightly scoped, administrator-protected file.
+// The credentials are deliberately not supplied in the Windows service command line.
+func loadAgentConfig(path string)error{
+ data,err:=os.ReadFile(path);if err!=nil{return fmt.Errorf("read Agent config: %w",err)}
+ if len(data)>8192{return fmt.Errorf("Agent config exceeds 8 KiB")}
+ for _,line:=range strings.Split(string(data),"\n"){
+  line=strings.TrimSuffix(line,"\r")
+  if line==""||strings.HasPrefix(line,"#"){continue}
+  key,value,found:=strings.Cut(line,"=")
+  if !found||value==""||strings.ContainsRune(value,'\x00'){return fmt.Errorf("invalid Agent config line")}
+  switch key{
+  case "MONITOR_SERVER","MONITOR_NODE_NAME","MONITOR_AGENT_TOKEN":
+   if err:=os.Setenv(key,value);err!=nil{return err}
+  default:return fmt.Errorf("unexpected Agent config key %q",key)
+  }
+ }
+ return nil
+}
 func main(){
  mode:=flag.String("mode","server","server or agent")
  listen:=flag.String("listen",env("MONITOR_LISTEN","127.0.0.1:8090"),"HTTP listen address")
@@ -87,12 +105,14 @@ func main(){
  name:=flag.String("name","","agent display name")
  token:=flag.String("token","","shared ingestion token (or MONITOR_AGENT_TOKEN)")
  interval:=flag.Duration("interval",5*time.Second,"agent report interval")
+ configFile:=flag.String("config","","Agent credentials file (restricted to Administrators and SYSTEM)")
  file:=flag.String("data","/var/lib/monitor/nodes.json","legacy snapshot file")
  dbpath:=flag.String("db","/var/lib/monitor/monitor.db","SQLite database file")
  flag.Parse()
+ if *mode=="agent"&&*configFile!=""{if err:=loadAgentConfig(*configFile);err!=nil{log.Fatal(err)}}
  key:=*token;if key==""{key=os.Getenv("MONITOR_AGENT_TOKEN")}
  if key==""{log.Fatal("set -token or MONITOR_AGENT_TOKEN")}
- if *mode=="agent" {runAgent(*server,*name,key,*interval);return}
+ if *mode=="agent" {runAgentPlatform(*server,*name,key,*interval);return}
  if *mode!="server"{log.Fatal("unknown mode")}
  admin:=os.Getenv("MONITOR_ADMIN_TOKEN")
  s:=&Store{Nodes:map[string]Node{},file:*file}
