@@ -53,6 +53,18 @@ Agent 首次安装会提示：**Monitor Server HTTPS 地址**、节点标识与�
 若同一机器同时运行 Server 和 Agent，升级时优先备份 Server 并同步重启 Agent。
 升级前建议检查 [Releases](https://github.com/sockc/Monitor/releases)。
 
+## V0.9.7：修复国旗、按需显示套餐与 IPv4/IPv6 自动检测
+
+- 卡片上的国旗现在由 Server 本地提供 **SVG 图标**（GB、US、NL、HK 等 30 个常见地区；其他国家代码使用中性代码图形），解决部分 Windows 系统缺少国旗 Emoji 导致只出现 `GB`、`US` 的问题。素材来自 [flag-icons](https://github.com/lipis/flag-icons)，MIT 授权声明见 `third_party/flag-icons-LICENSE`
+- 未设置的价格、到期日期、带宽端口、流量额度、国家代码和 IPv4／IPv6 信息，在卡片上**直接隐藏对应区块**；填写后才显示。累计上传／下载改为同一行
+- Agent 独立使用 `api4.ipify.org`（强制 TCP/IPv4）与 `api6.ipify.org`（强制 TCP/IPv6）检测公网**出站** IP，启动时开始后台检测，每 12 小时刷新一次，不阻塞原 5 秒监控上报。任一地址检测失败视为“未知”，不会武断显示 IPv4/IPv6 不支持
+- 服务器详情会显示分别检测的公网 IPv4、IPv6 地址。节点管理原来的三态设置仍保留：手动“支持”优先显示标签，手动“不支持”优先隐藏标签，“自动检测／未知时隐藏”则只在检测成功时显示
+- API 保持兼容旧 Agent，节点原数据及流量不会重置；新 Agent 无需重新安装或重新填写令牌
+- 自动 IPv4／IPv6 检测默认开启，若需要完全关闭第三方 IP 查询，可在 Agent 环境配置 `MONITOR_IP_DETECTION_ENABLED=0` 和 `MONITOR_GEO_ENABLED=0`，再重启服务。关闭后不会继续发起新查询
+- 检测到的地址为 **VPS 的公网出口 IP**，不保证对应入站连通性，代理或特殊网络路径可能造成差异。查询所用的第三方 HTTPS 服务会看到出口 IP
+
+升级：先在 Server 执行 `sudo monitorctl self-update && sudo monitorctl upgrade server`，再在每台 Agent 执行 `sudo monitorctl self-update && sudo monitorctl upgrade agent`。
+
 ## V0.9.6：参考图同款服务器信息卡片
 
 - 首页玻璃卡片重排为：**在线状态／国旗／名称** → **价格和剩余天数** → **CPU、内存、磁盘、实时上传、实时下载五列** → **累计上传／累计下载** → **带宽口／月流量／IPv4／IPv6 标签** → **月流量使用进度**；保持宽屏每行 4 张卡
