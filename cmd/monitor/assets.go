@@ -381,7 +381,7 @@ function renderOverviewNodes(){
    }
   }
  }
- $('node-visible-count').textContent='显示 '+visible.length+' / '+cachedNodes.length+' 台';
+ $('node-visible-count').textContent=visible.length+' / '+cachedNodes.length;
  if(quickInfoNode){
   if(visible.some(n=>n.name===quickInfoNode)&&!collapsedGroups[(cachedNodes.find(n=>n.name===quickInfoNode)||{}).group||'未分组']){
    const trigger=[...document.querySelectorAll('.node-info-trigger')].find(b=>b.dataset.infoNode===quickInfoNode);
