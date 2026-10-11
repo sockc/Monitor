@@ -3,6 +3,10 @@ set -eu
 # Installation: sh install-openwrt.sh https://monitor.example.com NODE_NAME
 SERVER="${1:-}"; NAME="${2:-}"
 [ -n "$SERVER" ] && [ -n "$NAME" ] || { echo 'Usage: sh install-openwrt.sh https://server NODE_NAME'; exit 1; }
+if [ -x /usr/bin/monitor-openwrt-agent ]; then
+ echo "Already installed. Run monitor-agentctl upgrade instead." >&2
+ exit 1
+fi
 if [ ! -e /etc/monitor-agent.json ]; then
  printf 'Paste Agent token: ' >&2
  stty -echo 2>/dev/null || true
@@ -14,8 +18,8 @@ else TOKEN=''; fi
 [ "$(uname -m)" = "aarch64" ] || { echo "Only aarch64 is supported"; exit 1; }
 [ -f /lib/functions/procd.sh ] || { echo "procd is required"; exit 1; }
 case "$SERVER" in https://*) ;; *) echo "HTTPS server URL required"; exit 1;; esac
-[ -n "$NAME" ] && [ -n "$TOKEN" ] || exit 1
-RELEASE="v0.9.16.1"
+[ -n "$NAME" ] || exit 1
+RELEASE="v0.9.17"
 BASE="https://github.com/sockc/Monitor/releases/download/$RELEASE"
 BINARY="monitor-openwrt-linux-arm64"
 TMP="$(mktemp -d /tmp/monitor-install.XXXXXX)"
@@ -23,11 +27,15 @@ trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 if command -v curl >/dev/null 2>&1; then
  curl -fL "$BASE/$BINARY" -o "$TMP/$BINARY"
  curl -fL "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS"
+ curl -fL "$BASE/monitor-openwrt-agentctl" -o "$TMP/monitor-openwrt-agentctl"
 else
  wget -O "$TMP/$BINARY" "$BASE/$BINARY"
  wget -O "$TMP/SHA256SUMS" "$BASE/SHA256SUMS"
+ wget -O "$TMP/monitor-openwrt-agentctl" "$BASE/monitor-openwrt-agentctl"
 fi
-(cd "$TMP" && grep "  $BINARY$" SHA256SUMS | sha256sum -c -)
+(cd "$TMP" && grep "  $BINARY$" SHA256SUMS | sha256sum -c - && grep "  monitor-openwrt-agentctl$" SHA256SUMS | sha256sum -c -)
+chmod 755 "$TMP/$BINARY"
+"$TMP/$BINARY" -version >/dev/null
 BYTES="$(wc -c < "$TMP/$BINARY")"
 FREE="$(df -k /overlay | awk 'NR==2 {print $4}')"
 NEEDED="$(( (BYTES+1023)/1024 + 10240 ))"
@@ -39,6 +47,11 @@ if [ ! -e /etc/monitor-agent.json ]; then
    "$(escape "$SERVER")" "$(escape "$NAME")" "$(escape "$TOKEN")" > "$TMP/config"
  cp "$TMP/config" /etc/monitor-agent.json
  chmod 600 /etc/monitor-agent.json
+fi
+if [ -e /etc/monitor-agent.json ]; then
+ "$TMP/$BINARY" -config /etc/monitor-agent.json -check-config >/dev/null
+else
+ "$TMP/$BINARY" -config "$TMP/config" -check-config >/dev/null
 fi
 cat > "$TMP/init" <<'EOF'
 #!/bin/sh /etc/rc.common
@@ -56,8 +69,15 @@ EOF
 [ ! -x /etc/init.d/monitor-agent ] || /etc/init.d/monitor-agent stop || true
 cp "$TMP/$BINARY" /usr/bin/monitor-openwrt-agent
 chmod 755 /usr/bin/monitor-openwrt-agent
+cp "$TMP/monitor-openwrt-agentctl" /usr/sbin/monitor-agentctl
+chmod 755 /usr/sbin/monitor-agentctl
 cp "$TMP/init" /etc/init.d/monitor-agent
 chmod 755 /etc/init.d/monitor-agent
 /etc/init.d/monitor-agent enable
 /etc/init.d/monitor-agent start
-echo "Monitor OpenWrt Agent started."
+sleep 2
+if ! pidof monitor-openwrt-agent >/dev/null 2>&1; then
+ echo "Agent did not stay running; inspect logread -e monitor" >&2
+ exit 1
+fi
+echo "Monitor OpenWrt Agent started. Use monitor-agentctl status|upgrade|uninstall."
