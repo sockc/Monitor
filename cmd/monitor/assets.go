@@ -9,7 +9,7 @@ func staticHandler() http.Handler {
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if strings.HasPrefix(r.URL.Path,"/static/flags/"){serveFlagSVG(w,r);return}
   switch r.URL.Path{
-  case "/static/style.css":w.Header().Set("Content-Type","text/css; charset=utf-8");w.Write([]byte(styleCSS));w.Write([]byte(mobileRefinementCSS));w.Write([]byte(uiInteractionCSS));w.Write([]byte(uiV015CSS))
+  case "/static/style.css":w.Header().Set("Content-Type","text/css; charset=utf-8");w.Write([]byte(styleCSS));w.Write([]byte(mobileRefinementCSS));w.Write([]byte(uiInteractionCSS));w.Write([]byte(uiV015CSS));w.Write([]byte(uiV017CSS))
   case "/static/app.js":w.Header().Set("Content-Type","application/javascript; charset=utf-8");w.Write([]byte(appJS))
   default:http.NotFound(w,r)
   }
