@@ -24,7 +24,7 @@ esac
 [ "$(uname -m)" = aarch64 ] || exit 1
 [ -f "$CFG" ] && [ -x "$INIT" ] && [ -x "$APP" ] || { echo "Install Agent first" >&2; exit 1; }
 TMP="$(mktemp -d /tmp/monitor-upgrade.XXXXXX)"
-STAGE=/usr/bin/.monitor-agent-next
+STAGE=/usr/bin/.monitor-agent-next.$
 finish(){ rm -f "$STAGE" "$TMP/new" "$TMP/SHA256SUMS" "$TMP/previous"; rmdir "$TMP" 2>/dev/null || true; }
 trap finish EXIT
 URL="https://github.com/sockc/Monitor/releases/download/$VERSION"
