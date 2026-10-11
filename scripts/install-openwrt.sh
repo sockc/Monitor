@@ -14,8 +14,8 @@ else TOKEN=''; fi
 [ "$(uname -m)" = "aarch64" ] || { echo "Only aarch64 is supported"; exit 1; }
 [ -f /lib/functions/procd.sh ] || { echo "procd is required"; exit 1; }
 case "$SERVER" in https://*) ;; *) echo "HTTPS server URL required"; exit 1;; esac
-[ -n "$NAME" ] && [ -n "$TOKEN" ] || exit 1
-RELEASE="v0.9.16.1"
+[ -n "$NAME" ] || exit 1
+RELEASE="v0.9.17"
 BASE="https://github.com/sockc/Monitor/releases/download/$RELEASE"
 BINARY="monitor-openwrt-linux-arm64"
 TMP="$(mktemp -d /tmp/monitor-install.XXXXXX)"
