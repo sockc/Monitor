@@ -33,6 +33,10 @@ type sample struct {
  OS string `json:"os"`
  Arch string `json:"arch"`
  AgentVersion string `json:"agent_version"`
+ TemperatureC *float64 `json:"temperature_c,omitempty"`
+ WANInterface string `json:"wan_interface,omitempty"`
+ WAN6Interface string `json:"wan6_interface,omitempty"`
+ OverlayFree uint64 `json:"overlay_free,omitempty"`
  CPUCores int `json:"cpu_cores"`
  CPU float64 `json:"cpu"`
  Memory float64 `json:"memory"`
@@ -62,14 +66,6 @@ func memInfo()map[string]uint64 {
  m:=map[string]uint64{};f,e:=os.Open("/proc/meminfo");if e!=nil{return m};defer f.Close()
  sc:=bufio.NewScanner(f);for sc.Scan(){x:=strings.Fields(sc.Text());if len(x)<2{continue};n,_:=strconv.ParseUint(x[1],10,64);m[strings.TrimSuffix(x[0],":")]=n*1024};return m
 }
-func wanInterface()string {
- // Select IPv4 default route; use the interface counters to avoid
- // double counting bridge, veth, VPN and physical interfaces.
- f,e:=os.Open("/proc/net/route");if e!=nil{return ""};defer f.Close()
- sc:=bufio.NewScanner(f);first:=true
- for sc.Scan(){if first{first=false;continue};x:=strings.Fields(sc.Text());if len(x)<4||x[1]!="00000000"{continue};flags,e:=strconv.ParseUint(x[3],16,32);if e==nil&&flags&1!=0{return x[0]}}
- return ""
-}
 func networkBytes(iface string)(uint64,uint64){
  if iface==""{return 0,0}
  b,e:=os.ReadFile("/proc/net/dev");if e!=nil{return 0,0}
@@ -81,6 +77,7 @@ func operatingSystem()string {
  for _,line:=range strings.Split(string(b),"\n"){if strings.HasPrefix(line,"DISTRIB_RELEASE="){return "OpenWrt "+strings.Trim(strings.TrimPrefix(line,"DISTRIB_RELEASE="),string([]byte{32,39,34}))}}
  return "OpenWrt"
 }
+var network = &wanCache{}
 func collect(name string,prev cpuStat)(sample,cpuStat){
  now:=readCPU();var cpu float64;if now.total>prev.total&&now.idle>=prev.idle{cpu=percent(now.total-prev.total-(now.idle-prev.idle),now.total-prev.total)}
  host,_:=os.Hostname();s:=sample{Name:name,Hostname:host,OS:operatingSystem(),Arch:runtime.GOARCH,AgentVersion:version,CPUCores:runtime.NumCPU(),CPU:cpu,Timestamp:time.Now().UTC()}
@@ -88,7 +85,11 @@ func collect(name string,prev cpuStat)(sample,cpuStat){
  var st syscall.Statfs_t
  if syscall.Statfs("/overlay",&st)!=nil{_ = syscall.Statfs("/",&st)}
  if st.Blocks>0{size:=uint64(st.Bsize);s.DiskTotal=st.Blocks*size;free:=st.Bavail*size;if free>s.DiskTotal{free=s.DiskTotal};s.DiskUsed=s.DiskTotal-free;s.Disk=percent(s.DiskUsed,s.DiskTotal)}
- s.RxBytes,s.TxBytes=networkBytes(wanInterface())
+ device,wan6:=network.get()
+ s.WANInterface=device;s.WAN6Interface=wan6
+ s.RxBytes,s.TxBytes=networkBytes(device)
+ s.TemperatureC=cpuThermal()
+ if s.DiskTotal>=s.DiskUsed{s.OverlayFree=s.DiskTotal-s.DiskUsed}
  if b,e:=os.ReadFile("/proc/uptime");e==nil{p:=strings.Fields(string(b));if len(p)>0{v,_:=strconv.ParseFloat(p[0],64);s.Uptime=uint64(v)}}
  if b,e:=os.ReadFile("/proc/loadavg");e==nil{p:=strings.Fields(string(b));if len(p)>2{s.Load1,_=strconv.ParseFloat(p[0],64);s.Load5,_=strconv.ParseFloat(p[1],64);s.Load15,_=strconv.ParseFloat(p[2],64)}}
  return s,now
@@ -112,10 +113,30 @@ func report(client *http.Client,c config,s sample)error {
  if resp.StatusCode!=http.StatusNoContent{return fmt.Errorf("ingest HTTP %d",resp.StatusCode)};return nil
 }
 func main(){
- file:=flag.String("config","/etc/monitor-agent.json","owner-only JSON configuration");flag.Parse()
+ file:=flag.String("config","/etc/monitor-agent.json","owner-only JSON configuration")
+ showVersion:=flag.Bool("version",false,"print version")
+ checkConfig:=flag.Bool("check-config",false,"validate configuration and exit")
+ flag.Parse()
+ if *showVersion{fmt.Println(version);return}
  c,e:=readConfig(*file);if e!=nil{log.Fatal(e)}
+ if *checkConfig{fmt.Println("configuration valid");return}
  client:=&http.Client{Timeout:10*time.Second}
- prev:=readCPU();ticker:=time.NewTicker(time.Duration(c.Interval)*time.Second);defer ticker.Stop()
+ prev:=readCPU()
  log.Printf("OpenWrt monitor agent %s started",version)
- for {s,next:=collect(c.Name,prev);prev=next;if e:=report(client,c,s);e!=nil{log.Printf("report: %v",e)};<-ticker.C}
+ failures:=0
+ for {
+  s,next:=collect(c.Name,prev);prev=next
+  delay:=time.Duration(c.Interval)*time.Second
+  if e:=report(client,c,s);e!=nil{
+   failures++
+   if failures==1||failures%10==0{log.Printf("report failed (%d): %v",failures,e)}
+   // Backoff avoids a request storm while the router has no Internet.
+   for i:=1;i<failures&&delay<120*time.Second;i++{delay*=2}
+   if delay>120*time.Second{delay=120*time.Second}
+  }else{
+   if failures>0{log.Printf("connection recovered after %d failed reports",failures)}
+   failures=0
+  }
+  time.Sleep(delay)
+ }
 }
