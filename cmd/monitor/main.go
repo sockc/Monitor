@@ -1,6 +1,7 @@
 package main
 
 import (
+ "context"
  "crypto/subtle"
  
  "encoding/json"
@@ -32,13 +33,17 @@ func validIPFamily(raw string,family int)bool{
  return false
 }
 
-const monitorVersion="v0.9.17"
+const monitorVersion="v0.9.18"
 type Sample struct {
  Name string `json:"name"`
  Hostname string `json:"hostname"`
  OS string `json:"os"`
  Arch string `json:"arch"`
  AgentVersion string `json:"agent_version,omitempty"`
+ NetworkRTTMS *float64 `json:"network_rtt_ms,omitempty"`
+ NetworkFailurePercent *float64 `json:"network_failure_percent,omitempty"`
+ NetworkICMPLossPercent *float64 `json:"network_icmp_loss_percent,omitempty"`
+ NetworkCheckedAt int64 `json:"network_checked_at,omitempty"`
  TemperatureC *float64 `json:"temperature_c,omitempty"`
  WANInterface string `json:"wan_interface,omitempty"`
  WAN6Interface string `json:"wan6_interface,omitempty"`
@@ -135,7 +140,7 @@ func main(){
   defer r.Body.Close()
   var sample Sample
   if e:=json.NewDecoder(r.Body).Decode(&sample);e!=nil{http.Error(w,"invalid JSON",400);return}
-  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal||sample.SwapUsed>sample.SwapTotal||(sample.TemperatureC!=nil&&(*sample.TemperatureC<=0||*sample.TemperatureC>125))||len(sample.WANInterface)>32||len(sample.WAN6Interface)>32||len(sample.CPUModel)>256||len(sample.AgentVersion)>32||len([]rune(sample.AutoLocation))>140||len(sample.PublicIP)>45||len(sample.CountryCode)>2||len(sample.PublicIPv4)>15||len(sample.PublicIPv6)>45||(sample.PublicIPv4!=""&&!validIPFamily(sample.PublicIPv4,4))||(sample.PublicIPv6!=""&&!validIPFamily(sample.PublicIPv6,6)){http.Error(w,"invalid sample",400);return}
+  if len(sample.Name)<1||len(sample.Name)>100||sample.CPU<0||sample.CPU>100||sample.Memory<0||sample.Memory>100||sample.Disk<0||sample.Disk>100||sample.CPUCores<0||sample.CPUCores>4096||sample.MemoryUsed>sample.MemoryTotal||sample.DiskUsed>sample.DiskTotal||sample.SwapUsed>sample.SwapTotal||(sample.TemperatureC!=nil&&(*sample.TemperatureC<=0||*sample.TemperatureC>125))||len(sample.WANInterface)>32||len(sample.WAN6Interface)>32||(sample.NetworkRTTMS!=nil&&(*sample.NetworkRTTMS<0||*sample.NetworkRTTMS>5000))||(sample.NetworkFailurePercent!=nil&&(*sample.NetworkFailurePercent<0||*sample.NetworkFailurePercent>100))||(sample.NetworkICMPLossPercent!=nil&&(*sample.NetworkICMPLossPercent<0||*sample.NetworkICMPLossPercent>100))||len(sample.CPUModel)>256||len(sample.AgentVersion)>32||len([]rune(sample.AutoLocation))>140||len(sample.PublicIP)>45||len(sample.CountryCode)>2||len(sample.PublicIPv4)>15||len(sample.PublicIPv6)>45||(sample.PublicIPv4!=""&&!validIPFamily(sample.PublicIPv4,4))||(sample.PublicIPv6!=""&&!validIPFamily(sample.PublicIPv6,6)){http.Error(w,"invalid sample",400);return}
   sample.Timestamp=time.Now().UTC()
   if !validNodeToken(r.Context(),s.db,sample.Name,strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer "),key){http.Error(w,"unauthorized",401);return}
   // Only store IP geolocation supplied by the authenticated Agent. A
@@ -146,7 +151,7 @@ func main(){
 
   if e:=recordTrafficIncrement(s.db,sample);e!=nil{log.Printf("traffic: %v",e)}
   if e:=recordSample(s.db,sample);e!=nil{log.Printf("db: %v",e);http.Error(w,"db write failed",500);return}
-  s.Lock();previous,exists:=s.Nodes[sample.Name];node:=Node{Sample:sample,LastSeen:sample.Timestamp};if exists {dt:=sample.Timestamp.Sub(previous.LastSeen).Seconds();if dt>0&&dt<120&&sample.Uptime>=previous.Uptime {if sample.RxBytes>=previous.RxBytes{node.RxSpeed=float64(sample.RxBytes-previous.RxBytes)/dt};if sample.TxBytes>=previous.TxBytes{node.TxSpeed=float64(sample.TxBytes-previous.TxBytes)/dt};if sample.DiskReadBytes>=previous.DiskReadBytes{node.DiskReadSpeed=float64(sample.DiskReadBytes-previous.DiskReadBytes)/dt};if sample.DiskWriteBytes>=previous.DiskWriteBytes{node.DiskWriteSpeed=float64(sample.DiskWriteBytes-previous.DiskWriteBytes)/dt}}};s.Nodes[sample.Name]=node;s.Unlock()
+  s.Lock();previous,exists:=s.Nodes[sample.Name];node:=Node{Sample:sample,LastSeen:sample.Timestamp};if exists {dt:=sample.Timestamp.Sub(previous.LastSeen).Seconds();if dt>0&&dt<120&&sample.Uptime>=previous.Uptime&&sample.WANInterface==previous.WANInterface {if sample.RxBytes>=previous.RxBytes{node.RxSpeed=float64(sample.RxBytes-previous.RxBytes)/dt};if sample.TxBytes>=previous.TxBytes{node.TxSpeed=float64(sample.TxBytes-previous.TxBytes)/dt};if sample.DiskReadBytes>=previous.DiskReadBytes{node.DiskReadSpeed=float64(sample.DiskReadBytes-previous.DiskReadBytes)/dt};if sample.DiskWriteBytes>=previous.DiskWriteBytes{node.DiskWriteSpeed=float64(sample.DiskWriteBytes-previous.DiskWriteBytes)/dt}}};s.Nodes[sample.Name]=node;s.Unlock()
   w.WriteHeader(204)
  })
  authorized:=auth.require
@@ -176,6 +181,17 @@ func main(){
   if e!=nil{log.Printf("rotate node credential: %v",e);http.Error(w,"rebind failed",500);return}
   w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store")
   json.NewEncoder(w).Encode(map[string]string{"name":request.Name,"token":token})
+ })
+ mux.HandleFunc("/api/v1/uptime",func(w http.ResponseWriter,r *http.Request){
+  if !authorized(w,r){return}
+  if r.Method!=http.MethodGet{http.Error(w,"method",405);return}
+  name:=r.URL.Query().Get("name")
+  if !validNodeName(name){http.Error(w,"invalid node",400);return}
+  ctx,cancel:=context.WithTimeout(r.Context(),4*time.Second);defer cancel()
+  result,e:=queryUptime(ctx,s.db,name,time.Now())
+  if e!=nil{http.Error(w,"database error",500);return}
+  w.Header().Set("Content-Type","application/json");w.Header().Set("Cache-Control","no-store")
+  json.NewEncoder(w).Encode(result)
  })
  mux.HandleFunc("/api/v1/history",func(w http.ResponseWriter,r *http.Request){
   if !authorized(w,r){return}; name:=r.URL.Query().Get("name");hours,_:=strconv.Atoi(r.URL.Query().Get("hours"));if hours!=24&&hours!=168&&hours!=720{hours=24};if len(name)==0||len(name)>100{http.Error(w,"invalid name",400);return}

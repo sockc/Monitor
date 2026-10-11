@@ -127,6 +127,7 @@ func queryTraffic(ctx context.Context,db *sql.DB,name string,hours int)(TrafficS
   var ts int64;var raw string;if err=rows.Scan(&ts,&raw);err!=nil{return out,err}
   var current Sample;if json.Unmarshal([]byte(raw),&current)!=nil{continue}
   if seen{
+   if current.WANInterface!=previous.WANInterface&&(current.WANInterface!=""||previous.WANInterface!=""){previous=current;continue}
    var rx,tx uint64
    // Network counters can reset on reboots, or an interface can disappear.
    if current.Uptime>=previous.Uptime && current.RxBytes>=previous.RxBytes {rx=current.RxBytes-previous.RxBytes}
@@ -222,6 +223,7 @@ func recordTrafficIncrement(db *sql.DB,current Sample)error{
  var old Sample;if json.Unmarshal([]byte(raw),&old)!=nil{return nil}
  dt:=current.Timestamp.Unix()-ts
  if dt<=0||dt>600||current.Uptime<old.Uptime{return nil}
+ if current.WANInterface!=old.WANInterface&&(current.WANInterface!=""||old.WANInterface!=""){return nil} // interface switched; reset baseline
  if current.RxBytes<old.RxBytes||current.TxBytes<old.TxBytes{return nil}
  rx,tx:=current.RxBytes-old.RxBytes,current.TxBytes-old.TxBytes
  // Reject implausible spikes (>25.6 Gbit/s sustained over the interval).

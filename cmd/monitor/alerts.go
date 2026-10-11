@@ -33,6 +33,10 @@ func alertSchema(db *sql.DB)error{
  "CREATE TABLE IF NOT EXISTS alert_settings (id INTEGER PRIMARY KEY CHECK(id=1), config TEXT NOT NULL)",
  "CREATE TABLE IF NOT EXISTS alert_events (id INTEGER PRIMARY KEY AUTOINCREMENT,node TEXT NOT NULL,kind TEXT NOT NULL,start INTEGER NOT NULL,end INTEGER NOT NULL DEFAULT 0)",
  "CREATE INDEX IF NOT EXISTS alert_events_open ON alert_events(node,kind,end)",
+ // Older databases may contain duplicate open alarms. Resolve them before
+ // adding the partial unique index; retain the earliest active event.
+ "UPDATE alert_events SET end=CASE WHEN start>0 THEN start ELSE CAST(strftime('%s','now') AS INTEGER) END WHERE end=0 AND id NOT IN (SELECT MIN(id) FROM alert_events WHERE end=0 GROUP BY node,kind)",
+ "CREATE UNIQUE INDEX IF NOT EXISTS alert_one_open ON alert_events(node,kind) WHERE end=0",
  }{if _,e:=db.Exec(q);e!=nil{return e}};return nil
 }
 func defaultAlertSettings()AlertSettings{return AlertSettings{OfflineSeconds:60,CPUThreshold:90,MemoryThreshold:90,DiskThreshold:90,DurationSeconds:300}}
@@ -97,6 +101,9 @@ func startAlertLoop(s *Store){
     {"cpu",n.CPU>=cfg.CPUThreshold&&now.Sub(n.LastSeen)<30*time.Second,time.Duration(cfg.DurationSeconds)*time.Second},
     {"memory",n.Memory>=cfg.MemoryThreshold&&now.Sub(n.LastSeen)<30*time.Second,time.Duration(cfg.DurationSeconds)*time.Second},
     {"disk",n.Disk>=cfg.DiskThreshold&&now.Sub(n.LastSeen)<30*time.Second,time.Duration(cfg.DurationSeconds)*time.Second},
+    // Three TCP connect attempts to the Monitor HTTPS endpoint. This is a
+    // connectivity failure ratio, not ICMP loss; only fresh probes qualify.
+    {"network",n.NetworkFailurePercent!=nil&&n.NetworkCheckedAt>0&&now.Unix()-n.NetworkCheckedAt<150&&now.Sub(n.LastSeen)<30*time.Second&&*n.NetworkFailurePercent>=66,120*time.Second},
    }
    if p,ok:=summaries[n.Name];ok{
     stage:=quotaKind(p);for _,kind:=range []string{"quota_80","quota_90","quota_100"}{tests=append(tests,struct{kind string;bad bool;duration time.Duration}{kind,kind==stage,0})}

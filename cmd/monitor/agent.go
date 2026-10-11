@@ -13,6 +13,8 @@ import (
  "strings"
  "sync"
  "time"
+
+ "github.com/sockc/Monitor/internal/netprobe"
 )
 func runAgent(server,name,token string,interval time.Duration){runAgentContext(context.Background(),server,name,token,interval)}
 func runAgentContext(parent context.Context,server,name,token string,interval time.Duration){
@@ -22,6 +24,8 @@ func runAgentContext(parent context.Context,server,name,token string,interval ti
  if interval<time.Second{log.Fatal("interval must be >= 1s")}
  client:=&http.Client{Timeout:10*time.Second}
  prev:=readCPU()
+ probe:=&netprobe.Sampler{}
+ probe.Start(parent,server)
  geoEnabled:=os.Getenv("MONITOR_GEO_ENABLED")!="0"
  ipEnabled:=os.Getenv("MONITOR_IP_DETECTION_ENABLED")!="0"
  type netSnapshot struct{geo agentGeo;ipv4 string;ipv6 string}
@@ -49,6 +53,7 @@ func runAgentContext(parent context.Context,server,name,token string,interval ti
   mu.RLock();snapshot:=current;mu.RUnlock()
   sample.PublicIP=snapshot.geo.IP;sample.AutoLocation=snapshot.geo.Location;sample.CountryCode=snapshot.geo.CountryCode
   sample.PublicIPv4=snapshot.ipv4;sample.PublicIPv6=snapshot.ipv6
+  quality:=probe.Snapshot();sample.NetworkRTTMS=quality.RTTMS;sample.NetworkFailurePercent=quality.FailurePercent;sample.NetworkICMPLossPercent=quality.ICMPLossPercent;sample.NetworkCheckedAt=quality.CheckedAt
   b,e:=json.Marshal(sample);if e!=nil{return}
   ctx,cancel:=context.WithTimeout(parent,10*time.Second);defer cancel()
   req,e:=http.NewRequestWithContext(ctx,"POST",strings.TrimRight(server,"/")+"/api/v1/ingest",bytes.NewReader(b));if e!=nil{log.Print(e);return}

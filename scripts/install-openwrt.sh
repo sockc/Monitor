@@ -19,7 +19,7 @@ else TOKEN=''; fi
 [ -f /lib/functions/procd.sh ] || { echo "procd is required"; exit 1; }
 case "$SERVER" in https://*) ;; *) echo "HTTPS server URL required"; exit 1;; esac
 [ -n "$NAME" ] || exit 1
-RELEASE="v0.9.17"
+RELEASE="v0.9.18"
 BASE="https://github.com/sockc/Monitor/releases/download/$RELEASE"
 BINARY="monitor-openwrt-linux-arm64"
 TMP="$(mktemp -d /tmp/monitor-install.XXXXXX)"

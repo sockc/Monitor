@@ -6,7 +6,7 @@ APP=/usr/bin/monitor-openwrt-agent
 INIT=/etc/init.d/monitor-agent
 CFG=/etc/monitor-agent.json
 BIN=monitor-openwrt-linux-arm64
-VERSION=v0.9.17
+VERSION=v0.9.18
 case "$ACTION" in
  status)
   if [ -x "$APP" ]; then printf 'Version: '; "$APP" -version; else echo 'Not installed'; fi

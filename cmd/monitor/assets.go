@@ -9,7 +9,7 @@ func staticHandler() http.Handler {
  return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if strings.HasPrefix(r.URL.Path,"/static/flags/"){serveFlagSVG(w,r);return}
   switch r.URL.Path{
-  case "/static/style.css":w.Header().Set("Content-Type","text/css; charset=utf-8");w.Write([]byte(styleCSS));w.Write([]byte(mobileRefinementCSS));w.Write([]byte(uiInteractionCSS));w.Write([]byte(uiV015CSS));w.Write([]byte(uiV017CSS))
+  case "/static/style.css":w.Header().Set("Content-Type","text/css; charset=utf-8");w.Write([]byte(styleCSS));w.Write([]byte(mobileRefinementCSS));w.Write([]byte(uiInteractionCSS));w.Write([]byte(uiV015CSS));w.Write([]byte(uiV017CSS));w.Write([]byte(uiV018CSS))
   case "/static/app.js":w.Header().Set("Content-Type","application/javascript; charset=utf-8");w.Write([]byte(appJS))
   default:http.NotFound(w,r)
   }
@@ -527,7 +527,7 @@ function renderNode(n){
 }
 async function alertsLoad(){try{const r=await fetch('/api/v1/alerts');if(!r.ok)return;const d=await r.json(),a=d.settings;$('a-offline').value=a.offline_seconds;$('a-cpu').value=a.cpu_threshold;$('a-memory').value=a.memory_threshold;$('a-disk').value=a.disk_threshold;$('a-duration').value=a.duration_seconds;$('a-webhook').value=a.webhook||'';renderAlerts(d.events)}catch(e){$('alerts-status').textContent=e.message}}
 function alertAge(start,end){const seconds=Math.max(0,Math.floor((end||Date.now()/1000)-start));return seconds<60?seconds+'秒':seconds<3600?Math.floor(seconds/60)+'分钟':seconds<86400?Math.floor(seconds/3600)+'小时':Math.floor(seconds/86400)+'天'}
-function alertName(k){return ({quota_80:'月流量达到 80%',quota_90:'月流量达到 90%',quota_100:'月流量达到 100%',expiry_30:'30 天内到期',expiry_15:'15 天内到期',expiry_7:'7 天内到期',expiry_overdue:'服务器已到期'})[k]||k}
+function alertName(k){return ({offline:'节点离线',cpu:'CPU 使用率过高',memory:'内存使用率过高',disk:'磁盘使用率过高',network:'Monitor TCP 连接不稳定',quota_80:'月流量达到 80%',quota_90:'月流量达到 90%',quota_100:'月流量达到 100%',expiry_30:'30 天内到期',expiry_15:'15 天内到期',expiry_7:'7 天内到期',expiry_overdue:'服务器已到期'})[k]||k}
 let lastAlertEvents=[],alertFilter='active';
 document.querySelectorAll('[data-alert-mode]').forEach(button=>button.addEventListener('click',()=>{
  alertFilter=button.dataset.alertMode;renderAlerts(lastAlertEvents);
@@ -557,11 +557,36 @@ function renderAlerts(items){
 
 $('alerts-form').addEventListener('submit',async e=>{e.preventDefault();const payload={offline_seconds:Number($('a-offline').value),cpu_threshold:Number($('a-cpu').value),memory_threshold:Number($('a-memory').value),disk_threshold:Number($('a-disk').value),duration_seconds:Number($('a-duration').value),webhook:$('a-webhook').value.trim()};try{const r=await fetch('/api/v1/alerts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!r.ok)throw Error(await r.text());$('alerts-status').textContent='已保存'}catch(err){$('alerts-status').textContent=err.message}});
 let selectedNode=null;
+let uptimeFetchTicket=0;
+async function loadUptime(name){
+ const ticket=++uptimeFetchTicket,root=$('uptime-windows');
+ root.textContent='正在计算心跳覆盖率…';
+ try{
+  const response=await fetch('/api/v1/uptime?name='+encodeURIComponent(name),{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const windows=await response.json();
+  if(ticket!==uptimeFetchTicket||selectedNode!==name)return;
+  root.replaceChildren();
+  for(const w of windows){
+   const cell=document.createElement('div'),small=document.createElement('small'),strong=document.createElement('strong');
+   small.textContent=({24:'24 小时',168:'7 天',720:'30 天'})[w.hours]||w.hours+' 小时';
+   strong.textContent=w.percent===null?'样本不足':w.percent.toFixed(1)+'%';
+   cell.title=w.observed_minutes+' / '+w.expected_minutes+' 分钟有上报';
+   cell.append(small,strong);root.append(cell);
+  }
+ }catch(error){if(ticket===uptimeFetchTicket&&selectedNode===name)root.textContent='在线率暂不可用：'+error.message}
+}
 function openNode(name){selectedNode=name;switchView('detail');switchDetailTab('performance');updateDetail();window.scrollTo(0,0)}
 function detailRow(label,value){return '<div><span class="muted">'+esc(label)+'</span><br><strong>'+esc(value)+'</strong></div>'}
 function updateDetail(){if(!selectedNode)return;const n=cachedNodes.find(x=>x.name===selectedNode);if(!n){$('detail-title').textContent='节点不存在';$('detail-status').textContent='此节点可能已删除';return}
 $('detail-title').textContent=n.display_name||n.name;$('detail-subtitle').textContent=(n.group||'未分组')+' · '+n.name;
 $('detail-status').textContent=n.online?'● 在线 · 监控数据实时更新':'● 离线 · 最后上报 '+(n.last_seen?new Date(n.last_seen).toLocaleString():'未知');
+const fresh=n.online&&n.network_checked_at&&Date.now()/1000-n.network_checked_at<180;
+$('network-rtt').textContent=fresh&&n.network_rtt_ms!=null?Number(n.network_rtt_ms).toFixed(1)+' ms':'—';
+$('network-fail').textContent=fresh&&n.network_failure_percent!=null?Number(n.network_failure_percent).toFixed(0)+'%':'—';
+$('network-icmp-loss').textContent=fresh&&n.network_icmp_loss_percent!=null?Number(n.network_icmp_loss_percent).toFixed(0)+'%':'未检测';
+$('network-time').textContent=fresh?new Date(n.network_checked_at*1000).toLocaleTimeString():'暂无有效探测';
+
 $('detail-metrics').innerHTML=[['CPU',n.cpu],['内存',n.memory],['磁盘',n.disk]].map(x=>'<div><small>'+x[0]+'</small><strong>'+(n.online?Math.round(x[1])+'%':'—')+'</strong></div>').join('');
 $('detail-info').innerHTML=detailRow('服务器位置',n.location||'尚未定位')+detailRow('位置来源',n.location_source==='manual'?'手动覆盖':n.location_source==='ip'?'公网 IP 自动识别':'未识别')+detailRow('定位 IP',n.public_ip||'—')+detailRow('公网 IPv4（出站）',n.public_ipv4||'未检测到')+detailRow('公网 IPv6（出站）',n.public_ipv6||'未检测到')+detailRow('主机名',n.hostname||'—')+detailRow('系统发行版',n.os||'—')+(n.temperature_c!=null?detailRow('CPU 温度',Number(n.temperature_c).toFixed(1)+' °C'):'')+(n.os&&n.os.startsWith('OpenWrt')?detailRow('Overlay 可写剩余',formatBytes(Math.max(0,n.disk_total-n.disk_used))):'')+detailRow('Agent 版本',n.agent_version||'未上报')+detailRow('CPU 逻辑核心',n.cpu_cores>0?n.cpu_cores+' C':'—')+detailRow('CPU 型号',n.cpu_model||'—')+detailRow('负载 1/5/15 分钟',[n.load1,n.load5,n.load15].every(x=>x!==undefined)?[n.load1,n.load5,n.load15].map(x=>Number(x).toFixed(2)).join(' / '):'—')+detailRow('Swap',n.swap_total>0?capacity(n.swap_used)+' / '+capacity(n.swap_total):'无或未上报')+detailRow('内存使用',n.memory_total>0?capacity(n.memory_used)+' / '+capacity(n.memory_total):'—')+detailRow('磁盘使用',n.disk_total>0?capacity(n.disk_used)+' / '+capacity(n.disk_total):'—')+detailRow('架构',n.arch||'—')+detailRow('运行时长',n.uptime?Math.floor(n.uptime/86400)+' 天':'—')+detailRow('最后上报',n.last_seen?new Date(n.last_seen).toLocaleString():'—')+(n.notes?detailRow('备注',n.notes):'');
 const p=trafficPeriods[n.name];$('detail-network-info').innerHTML=detailRow('实时下载',n.online?formatBytes(n.rx_speed)+'/s':'—')+detailRow('实时上传',n.online?formatBytes(n.tx_speed)+'/s':'—')+(n.wan_interface?detailRow('WAN 接口',n.wan_interface):'')+(n.wan6_interface?detailRow('WAN6 接口',n.wan6_interface):'')+detailRow('累计接收（网卡计数）',formatBytes(n.rx_bytes))+detailRow('累计发送（网卡计数）',formatBytes(n.tx_bytes))+detailRow('今日流量',p&&p.has_samples?formatBytes(p.today_rx+p.today_tx):'—')+detailRow('本月流量',p&&p.has_samples?formatBytes(p.month_rx+p.month_tx):'—')+detailRow('统计时区',p?p.timezone||'UTC':'UTC')+detailRow('月流量额度',p&&p.quota_gb>0?p.quota_gb+' GB':'未设置')+detailRow('磁盘读取',n.online?formatBytes(n.disk_read_speed)+'/s':'—')+detailRow('磁盘写入',n.online?formatBytes(n.disk_write_speed)+'/s':'—');
@@ -605,7 +630,7 @@ window.addEventListener('scroll',()=>{if(quickInfoNode)positionNodeInfo()},{pass
 window.addEventListener('resize',()=>{if(quickInfoNode)positionNodeInfo()});
 
 function switchDetailTab(tab){document.querySelectorAll('.detail-tab').forEach(b=>{const on=b.dataset.detailTab===tab;b.classList.toggle('selected',on);b.setAttribute('aria-selected',String(on));b.tabIndex=0});document.querySelectorAll('.detail-pane').forEach(p=>p.hidden=p.id!=='detail-'+tab)}
-document.querySelectorAll('.detail-tab').forEach(b=>b.addEventListener('click',()=>switchDetailTab(b.dataset.detailTab)));
+document.querySelectorAll('.detail-tab').forEach(b=>b.addEventListener('click',()=>{switchDetailTab(b.dataset.detailTab);if(b.dataset.detailTab==='network'&&selectedNode)loadUptime(selectedNode)}));
 switchDetailTab('performance');
 $('refresh-alerts').addEventListener('click',refreshAlertEvents);
 $('detail-back').addEventListener('click',()=>switchView('overview'));
