@@ -478,7 +478,8 @@ function renderNode(n){
  const loc=n.location||'',provider=profile.provider||'';
  const context=[loc,provider].filter(Boolean).map(esc).join(' · ');
  const isRouter=String(n.os||'').startsWith('OpenWrt');
- const routerInfo=isRouter?'<div class="router-meta">'+(n.temperature_c!=null?'温度 '+Number(n.temperature_c).toFixed(1)+'℃':'温度未提供')+(n.wan_interface?' · WAN '+esc(n.wan_interface):'')+'</div>':'';
+ const routerLabels=[n.temperature_c!=null?'温度 '+Number(n.temperature_c).toFixed(1)+'℃':'',n.wan_interface?'WAN '+esc(n.wan_interface):''].filter(Boolean);
+ const routerInfo=isRouter&&routerLabels.length?'<div class="router-meta">'+routerLabels.join(' · ')+'</div>':'';
  const p=Number(profile.price_value)||0,cycle=({month:'月',quarter:'季',year:'年',one_time:'一次'})[profile.billing_cycle]||'年';
  const price=p>0?p.toLocaleString('en-US',{maximumFractionDigits:2})+' '+esc(profile.price_currency||'USD')+'/'+cycle:'';
  const expiration=expiryInfo(period,profile);
