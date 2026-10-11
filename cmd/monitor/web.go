@@ -33,6 +33,19 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
   <section class="history-panel ui-panel"><div class="panel-title"><div><h3>历史资源趋势</h3><p class="muted">CPU、内存及磁盘的使用率变化</p></div><select id="detail-hours" aria-label="趋势范围"><option value="24">24 小时</option><option value="168">7 天</option><option value="720">30 天</option></select></div><canvas id="detail-chart" width="900" height="240" aria-label="CPU、内存和磁盘趋势图" tabindex="0"></canvas><div id="detail-point" class="chart-readout" role="status">触摸图表查看各项指标</div><p id="detail-chart-status" class="muted"></p></section>
  </div>
  <div class="detail-pane" id="detail-network" role="tabpanel" hidden>
+  <section class="history-panel ui-panel network-quality-panel">
+   <div class="panel-title"><div><h3>网络质量</h3><p class="muted">Agent 至 Monitor 服务端的 TCP 连接探测</p></div></div>
+   <div class="network-quality-kpis">
+    <div><small>TCP 连接延迟</small><strong id="network-rtt">—</strong></div>
+    <div><small>TCP 探测失败率</small><strong id="network-fail">—</strong></div>
+    <div><small>ICMP 丢包率</small><strong id="network-icmp-loss">—</strong></div>
+    <div><small>探测时间</small><strong id="network-time">暂无数据</strong></div>
+   </div>
+   <p class="field-hint">每分钟尝试 3 次 TCP 连接及可用时的 ICMP Ping；TCP 失败率不是丢包率。部分服务端禁 Ping 时可能显示 ICMP 100% 丢包，但 HTTPS 仍然可用。</p>
+   <div class="panel-title"><h3>服务端心跳覆盖率</h3></div>
+   <div class="network-quality-kpis" id="uptime-windows"><div>24 小时：—</div><div>7 天：—</div><div>30 天：—</div></div>
+   <p class="field-hint">以 Monitor 收到心跳的分钟数计算；新节点从首次上报开始统计。不是独立 SLA 在线率。</p>
+  </section>
   <section class="history-panel ui-panel"><div class="panel-title"><div><h3>网络概览</h3><p class="muted">实时速率、流量及统计口径</p></div></div><div id="detail-network-info" class="detail-data-grid"></div></section>
   <section class="history-panel ui-panel"><div class="panel-title"><h3>历史网络流量</h3></div><p id="detail-traffic" class="muted"></p><p class="field-hint">历史流量为采样估算，可能与服务商计费数据不同。</p></section>
  </div>

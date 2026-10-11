@@ -17,6 +17,8 @@ import (
  "strings"
  "syscall"
  "time"
+
+ "github.com/sockc/Monitor/internal/netprobe"
 )
 
 var version = "dev"
@@ -33,6 +35,10 @@ type sample struct {
  OS string `json:"os"`
  Arch string `json:"arch"`
  AgentVersion string `json:"agent_version"`
+ NetworkRTTMS *float64 `json:"network_rtt_ms,omitempty"`
+ NetworkFailurePercent *float64 `json:"network_failure_percent,omitempty"`
+ NetworkICMPLossPercent *float64 `json:"network_icmp_loss_percent,omitempty"`
+ NetworkCheckedAt int64 `json:"network_checked_at,omitempty"`
  TemperatureC *float64 `json:"temperature_c,omitempty"`
  WANInterface string `json:"wan_interface,omitempty"`
  WAN6Interface string `json:"wan6_interface,omitempty"`
@@ -122,10 +128,13 @@ func main(){
  if *checkConfig{fmt.Println("configuration valid");return}
  client:=&http.Client{Timeout:10*time.Second}
  prev:=readCPU()
+ qualitySampler:=&netprobe.Sampler{}
+ qualitySampler.Start(context.Background(),c.Server)
  log.Printf("OpenWrt monitor agent %s started",version)
  failures:=0
  for {
   s,next:=collect(c.Name,prev);prev=next
+  quality:=qualitySampler.Snapshot();s.NetworkRTTMS=quality.RTTMS;s.NetworkFailurePercent=quality.FailurePercent;s.NetworkICMPLossPercent=quality.ICMPLossPercent;s.NetworkCheckedAt=quality.CheckedAt
   delay:=time.Duration(c.Interval)*time.Second
   if e:=report(client,c,s);e!=nil{
    failures++

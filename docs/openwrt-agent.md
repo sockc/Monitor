@@ -11,7 +11,7 @@
 ```sh
 uname -m
 df -h /overlay
-wget -O /tmp/install-openwrt.sh https://github.com/sockc/Monitor/releases/download/v0.9.17/install-openwrt.sh
+wget -O /tmp/install-openwrt.sh https://github.com/sockc/Monitor/releases/download/v0.9.18/install-openwrt.sh
 sh /tmp/install-openwrt.sh https://你的-monitor-域名 节点ID
 ```
 
