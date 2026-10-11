@@ -17,7 +17,7 @@ const dashboardHTML=`<!doctype html><html lang="zh"><head><meta charset="utf-8">
    <div class="dashboard-toolbar-actions">
     <button type="button" class="primary-btn" id="add-node">＋ 添加</button>
     <div class="filter-selects"><select id="node-group" aria-label="筛选服务器分组"><option value="">全部分组</option></select></div>
-    <div class="layout-switch" role="group" aria-label="服务器显示方式"><button type="button" class="layout-button" data-layout="cards">标准</button><button type="button" class="layout-button active" data-layout="compact">紧凑</button><button type="button" class="layout-button" data-layout="list">列表</button></div>
+    <div class="layout-switch" role="group" aria-label="服务器显示方式"><button type="button" class="layout-button" data-layout="cards">标准</button><button type="button" class="layout-button active" data-layout="compact">紧凑</button><button type="button" class="layout-button" data-layout="list">列表</button><select id="mobile-layout-select" aria-label="服务器显示方式"><option value="cards">标准</option><option value="compact" selected>紧凑</option><option value="list">列表</option></select></div>
    </div>
   </div>
   <div class="overview-quick-filters" role="group" aria-label="节点快捷筛选"><button type="button" class="selected" data-node-filter="all" aria-pressed="true">全部</button><button type="button" data-node-filter="favorite" aria-pressed="false">★ 收藏</button><button type="button" data-node-filter="alert" aria-pressed="false">异常</button></div>
