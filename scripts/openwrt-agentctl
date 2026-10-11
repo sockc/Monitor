@@ -1,0 +1,57 @@
+#!/bin/sh
+# Manage the lightweight Monitor Agent on OpenWrt aarch64.
+set -eu
+ACTION="$1"
+APP=/usr/bin/monitor-openwrt-agent
+INIT=/etc/init.d/monitor-agent
+CFG=/etc/monitor-agent.json
+BIN=monitor-openwrt-linux-arm64
+VERSION=v0.9.17
+case "$ACTION" in
+ status)
+  if [ -x "$APP" ]; then printf 'Version: '; "$APP" -version; else echo 'Not installed'; fi
+  if [ -x "$INIT" ]; then "$INIT" status || true; fi
+  df -h /overlay
+  exit 0 ;;
+ uninstall)
+  [ ! -x "$INIT" ] || { "$INIT" stop || true; "$INIT" disable || true; }
+  rm -f "$APP" "$INIT"
+  echo "Agent uninstalled. Config retained at $CFG"
+  exit 0 ;;
+ upgrade) ;;
+ *) echo "Usage: $0 status|upgrade|uninstall" >&2; exit 2 ;;
+esac
+[ "$(uname -m)" = aarch64 ] || exit 1
+[ -f "$CFG" ] && [ -x "$INIT" ] && [ -x "$APP" ] || { echo "Install Agent first" >&2; exit 1; }
+TMP="$(mktemp -d /tmp/monitor-upgrade.XXXXXX)"
+STAGE=/usr/bin/.monitor-agent-next
+finish(){ rm -f "$STAGE" "$TMP/new" "$TMP/SHA256SUMS" "$TMP/previous"; rmdir "$TMP" 2>/dev/null || true; }
+trap finish EXIT
+URL="https://github.com/sockc/Monitor/releases/download/$VERSION"
+download(){
+ if command -v curl >/dev/null 2>&1; then curl -fL "$1" -o "$2"
+ else wget -O "$2" "$1"; fi
+}
+download "$URL/$BIN" "$TMP/new"
+download "$URL/SHA256SUMS" "$TMP/SHA256SUMS"
+(cd "$TMP" && cp new "$BIN" && grep "  $BIN$" SHA256SUMS | sha256sum -c - && rm -f "$BIN") || exit 1
+chmod 755 "$TMP/new"
+"$TMP/new" -version
+"$TMP/new" -config "$CFG" -check-config
+SIZE="$(wc -c < "$TMP/new" | tr -d ' ')"
+FREE="$(df -k /overlay | awk 'END {print $4}')"
+[ "$FREE" -gt "$(( (SIZE+1023)/1024+10240 ))" ] || { echo "Insufficient overlay flash" >&2; exit 1; }
+cp "$APP" "$TMP/previous"
+cp "$TMP/new" "$STAGE"
+chmod 755 "$STAGE"
+"$INIT" stop
+mv -f "$STAGE" "$APP"
+"$INIT" start
+sleep 3
+if pidof monitor-openwrt-agent >/dev/null 2>&1; then echo "Upgrade successful";exit 0;fi
+echo "Agent failed to start, restoring previous binary" >&2
+"$INIT" stop || true
+cp "$TMP/previous" "$APP"
+chmod 755 "$APP"
+"$INIT" start || true
+exit 1
