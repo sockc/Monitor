@@ -317,8 +317,10 @@ $('overview-alert-filter').addEventListener('click',()=>{setNodeFilter('alert');
 document.querySelectorAll('[data-node-filter]').forEach(b=>{const on=b.dataset.nodeFilter===nodeFilter;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on))});
 
 try{const saved=localStorage.getItem('monitor-node-layout');if(['cards','compact','list'].includes(saved))currentLayout=saved}catch(e){}
-function updateLayout(){const container=$('nodes');container.classList.add('server-grid');container.dataset.layout=currentLayout;document.querySelectorAll('.layout-button').forEach(b=>{const active=b.dataset.layout===currentLayout;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))})}
-document.querySelectorAll('.layout-button').forEach(b=>b.addEventListener('click',()=>{currentLayout=b.dataset.layout;try{localStorage.setItem('monitor-node-layout',currentLayout)}catch(e){}updateLayout();renderOverviewNodes()}));
+function updateLayout(){const container=$('nodes');container.classList.add('server-grid');container.dataset.layout=currentLayout;document.querySelectorAll('.layout-button').forEach(b=>{const active=b.dataset.layout===currentLayout;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});const mobile=$('mobile-layout-select');if(mobile)mobile.value=currentLayout}
+function chooseNodeLayout(layout){if(!['cards','compact','list'].includes(layout))return;currentLayout=layout;try{localStorage.setItem('monitor-node-layout',currentLayout)}catch(e){}updateLayout();renderOverviewNodes()}
+document.querySelectorAll('.layout-button').forEach(b=>b.addEventListener('click',()=>chooseNodeLayout(b.dataset.layout)));
+$('mobile-layout-select').addEventListener('change',e=>chooseNodeLayout(e.target.value));
 updateLayout();
 function capacity(n){return n>0?formatBytes(n):'—'}
 function hardware(n){return '<div class="hardware-line"><span>'+((n.cpu_cores>0?n.cpu_cores+'C':'—')+' CPU')+'</span><span>内存 '+capacity(n.memory_total)+'</span><span>磁盘 '+capacity(n.disk_total)+'</span></div>'}
