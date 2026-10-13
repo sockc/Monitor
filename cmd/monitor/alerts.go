@@ -39,6 +39,25 @@ func alertSchema(db *sql.DB)error{
  "CREATE UNIQUE INDEX IF NOT EXISTS alert_one_open ON alert_events(node,kind) WHERE end=0",
  }{if _,e:=db.Exec(q);e!=nil{return e}};return nil
 }
+// purgeRevokedAlerts is a one-time, idempotent migration for versions which
+// removed a node without deleting its alert history. REVOKED tombstones are
+// authoritative and ensure no live node's history is touched.
+func purgeRevokedAlerts(ctx context.Context,db *sql.DB)(int64,error){
+ result,err:=db.ExecContext(ctx,"DELETE FROM alert_events WHERE EXISTS (SELECT 1 FROM agent_tokens WHERE agent_tokens.name=alert_events.node AND agent_tokens.hash='REVOKED')")
+ if err!=nil{return 0,err}
+ return result.RowsAffected()
+}
+
+// insertActiveAlert prevents an in-flight alert-loop snapshot from reopening a
+// node's alert after removal. The conditional insert and the deletion
+// transaction are serialized by SQLite's write lock.
+func insertActiveAlert(db *sql.DB,node,kind string,now int64)(bool,error){
+ result,err:=db.Exec("INSERT INTO alert_events(node,kind,start) SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM agent_tokens WHERE name=? AND hash='REVOKED') ON CONFLICT DO NOTHING",node,kind,now,node)
+ if err!=nil{return false,err}
+ n,err:=result.RowsAffected()
+ return n==1,err
+}
+
 func defaultAlertSettings()AlertSettings{return AlertSettings{OfflineSeconds:60,CPUThreshold:90,MemoryThreshold:90,DiskThreshold:90,DurationSeconds:300}}
 func getAlertSettings(db *sql.DB)AlertSettings{
  cfg:=defaultAlertSettings();var raw string
@@ -48,7 +67,7 @@ func getAlertSettings(db *sql.DB)AlertSettings{
 func writeAlertSettings(db *sql.DB,c AlertSettings)error{raw,e:=json.Marshal(c);if e!=nil{return e};_,e=db.Exec("INSERT INTO alert_settings(id,config) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config",string(raw));return e}
 func readAlerts(ctx context.Context,db *sql.DB)(AlertResponse,error){
  out:=AlertResponse{Settings:getAlertSettings(db),Events:[]AlertEvent{}}
- rows,e:=db.QueryContext(ctx,"SELECT id,node,kind,start,end FROM alert_events ORDER BY id DESC LIMIT 100");if e!=nil{return out,e};defer rows.Close()
+ rows,e:=db.QueryContext(ctx,"SELECT a.id,a.node,a.kind,a.start,a.end FROM alert_events a WHERE NOT EXISTS (SELECT 1 FROM agent_tokens t WHERE t.name=a.node AND t.hash='REVOKED') ORDER BY a.id DESC LIMIT 100");if e!=nil{return out,e};defer rows.Close()
  for rows.Next(){var x AlertEvent;if e=rows.Scan(&x.ID,&x.Node,&x.Kind,&x.Start,&x.End);e!=nil{return out,e};out.Events=append(out.Events,x)}
  return out,rows.Err()
 }
@@ -115,12 +134,12 @@ func startAlertLoop(s *Store){
     if t.bad{
      if st.since.IsZero(){st.since=now}
      if !st.active&&now.Sub(st.since)>=t.duration{
-      if _,e:=s.db.Exec("INSERT INTO alert_events(node,kind,start) VALUES(?,?,?)",n.Name,t.kind,now.Unix());e==nil{st.active=true;go deliverWebhook(cfg.Webhook,n.Name,t.kind,"firing")}
+      if inserted,e:=insertActiveAlert(s.db,n.Name,t.kind,now.Unix());e==nil&&inserted{st.active=true;go deliverWebhook(cfg.Webhook,n.Name,t.kind,"firing")}
      }
     } else {
      st.since=time.Time{}
      if st.active{
-      if _,e:=s.db.Exec("UPDATE alert_events SET end=? WHERE node=? AND kind=? AND end=0",now.Unix(),n.Name,t.kind);e==nil{go deliverWebhook(cfg.Webhook,n.Name,t.kind,"resolved");st.active=false}
+      if result,e:=s.db.Exec("UPDATE alert_events SET end=? WHERE node=? AND kind=? AND end=0",now.Unix(),n.Name,t.kind);e==nil{if changed,_:=result.RowsAffected();changed>0{go deliverWebhook(cfg.Webhook,n.Name,t.kind,"resolved")};st.active=false}
      }
     }
     states[id]=st
