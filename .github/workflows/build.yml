@@ -72,7 +72,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w -X main.version=v0.9.18" -o dist/monitor-openwrt-linux-arm64 ./cmd/monitor-openwrt-agent
+          go build -trimpath -ldflags="-s -w -X main.version=v0.9.18.1" -o dist/monitor-openwrt-linux-arm64 ./cmd/monitor-openwrt-agent
           file dist/monitor-openwrt-linux-arm64
           ls -lh dist/monitor-openwrt-linux-arm64
           test "$(wc -c < dist/monitor-openwrt-linux-arm64)" -le 6291456
@@ -151,16 +151,16 @@ jobs:
           pattern: monitor-*
           path: dist
           merge-multiple: true
-      - name: Publish V0.9.17
+      - name: Publish V0.9.18.1
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum monitor-linux-* monitor-openwrt-linux-arm64 monitor-openwrt-agentctl install-openwrt.sh monitor-windows-amd64.exe > SHA256SUMS)
           HEAD_SHA="$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq .object.sha)"
           if [ "$HEAD_SHA" != "${{ github.sha }}" ]; then echo "Skipping outdated run"; exit 0; fi
-          if gh release view v0.9.18 --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload v0.9.18 dist/monitor-linux-* dist/monitor-openwrt-linux-arm64 dist/monitor-openwrt-agentctl dist/install-openwrt.sh dist/monitor-windows-amd64.exe dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
-            gh release edit v0.9.18 --target "${{ github.sha }}" --repo "${{ github.repository }}"
+          if gh release view v0.9.18.1 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v0.9.18.1 dist/monitor-linux-* dist/monitor-openwrt-linux-arm64 dist/monitor-openwrt-agentctl dist/install-openwrt.sh dist/monitor-windows-amd64.exe dist/SHA256SUMS --clobber --repo "${{ github.repository }}"
+            gh release edit v0.9.18.1 --target "${{ github.sha }}" --repo "${{ github.repository }}"
             exit 0
           fi
-          gh release create v0.9.18 dist/monitor-linux-* dist/monitor-openwrt-linux-arm64 dist/monitor-openwrt-agentctl dist/install-openwrt.sh dist/monitor-windows-amd64.exe dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.17" --notes "Monitor V0.9.18: TCP connectivity quality to the Monitor HTTPS endpoint (not ICMP packet loss), heartbeat-minute coverage, single-active-alert deduplication, WAN counter safeguards, and responsive network details. Includes all V0.9.17 OpenWrt improvements."
+          gh release create v0.9.18.1 dist/monitor-linux-* dist/monitor-openwrt-linux-arm64 dist/monitor-openwrt-agentctl dist/install-openwrt.sh dist/monitor-windows-amd64.exe dist/SHA256SUMS --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Monitor V0.9.18.1" --notes "Monitor V0.9.18: TCP connectivity quality to the Monitor HTTPS endpoint (not ICMP packet loss), heartbeat-minute coverage, single-active-alert deduplication, WAN counter safeguards, and responsive network details. Includes all V0.9.17 OpenWrt improvements."

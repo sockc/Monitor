@@ -33,7 +33,7 @@ func validIPFamily(raw string,family int)bool{
  return false
 }
 
-const monitorVersion="v0.9.18"
+const monitorVersion="v0.9.18.1"
 type Sample struct {
  Name string `json:"name"`
  Hostname string `json:"hostname"`
@@ -127,6 +127,7 @@ func main(){
  s:=&Store{Nodes:map[string]Node{},file:*file}
  db,e:=openDB(*dbpath);if e!=nil{log.Fatal(e)};defer db.Close();s.db=db
  if e:=alertSchema(db);e!=nil{log.Fatal(e)}
+ if removed,e:=purgeRevokedAlerts(context.Background(),db);e!=nil{log.Fatalf("cleanup revoked-node alerts: %v",e)}else if removed>0{log.Printf("cleaned %d legacy alerts from deleted nodes",removed)}
  if b,e:=os.ReadFile(*file);e==nil{if e=json.Unmarshal(b,&s.Nodes);e!=nil{log.Printf("invalid data file: %v",e)}}
  if e:=restoreNodes(s);e!=nil{log.Printf("restore nodes: %v",e)}
  auth,err:=newAuth(db,admin);if err!=nil{log.Fatal(err)}

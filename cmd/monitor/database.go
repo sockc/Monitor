@@ -57,6 +57,8 @@ func openDB(path string)(*sql.DB,error){
  "CREATE TABLE IF NOT EXISTS traffic_quarter(name TEXT NOT NULL, ts INTEGER NOT NULL, rx INTEGER NOT NULL DEFAULT 0, tx INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(name,ts))",
  "CREATE TABLE IF NOT EXISTS node_limits(name TEXT PRIMARY KEY, timezone TEXT NOT NULL DEFAULT 'UTC', quota_gb REAL NOT NULL DEFAULT 0, expires_on TEXT NOT NULL DEFAULT '')",
  "CREATE TABLE IF NOT EXISTS agent_tokens(name TEXT PRIMARY KEY,hash TEXT NOT NULL)",
+ // Node removal must be safe even before alertSchema creates its indices.
+ "CREATE TABLE IF NOT EXISTS alert_events (id INTEGER PRIMARY KEY AUTOINCREMENT,node TEXT NOT NULL,kind TEXT NOT NULL,start INTEGER NOT NULL,end INTEGER NOT NULL DEFAULT 0)",
  "CREATE TABLE IF NOT EXISTS node_metadata(name TEXT PRIMARY KEY,display_name TEXT NOT NULL DEFAULT '',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '')",
  "CREATE TABLE IF NOT EXISTS node_favorites(name TEXT PRIMARY KEY, favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN (0,1)))",
  "CREATE TABLE IF NOT EXISTS node_geo(name TEXT PRIMARY KEY,public_ip TEXT NOT NULL DEFAULT '',auto_location TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)",
@@ -145,8 +147,12 @@ func queryTraffic(ctx context.Context,db *sql.DB,name string,hours int)(TrafficS
 
 func sameOrigin(r *http.Request)bool{origin:=r.Header.Get("Origin");return origin==""||origin=="https://"+r.Host||origin=="http://"+r.Host}
 func revokeNode(ctx context.Context,db *sql.DB,name string)error{
- // A tombstone blocks fallback authentication with the legacy shared token.
- _,err:=db.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");return err
+ // Retain the existing sample history for a revoked identity, but remove
+ // all its alert records in the same transaction as its authentication tombstone.
+ tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+ if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"DELETE FROM alert_events WHERE node=?",name);err!=nil{return err}
+ return tx.Commit()
 }
 func removeNode(ctx context.Context,db *sql.DB,name string)error{
  tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
@@ -158,6 +164,8 @@ func removeNode(ctx context.Context,db *sql.DB,name string)error{
  if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_daily WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_quarter WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_limits WHERE name=?",name);err!=nil{return err}
+ // A deleted node must never leave active or recovered alarms behind.
+ if _,err=tx.ExecContext(ctx,"DELETE FROM alert_events WHERE node=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");err!=nil{return err}
  return tx.Commit()
 }
