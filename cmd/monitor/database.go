@@ -145,8 +145,12 @@ func queryTraffic(ctx context.Context,db *sql.DB,name string,hours int)(TrafficS
 
 func sameOrigin(r *http.Request)bool{origin:=r.Header.Get("Origin");return origin==""||origin=="https://"+r.Host||origin=="http://"+r.Host}
 func revokeNode(ctx context.Context,db *sql.DB,name string)error{
- // A tombstone blocks fallback authentication with the legacy shared token.
- _,err:=db.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");return err
+ // Retain the existing sample history for a revoked identity, but remove
+ // all its alert records in the same transaction as its authentication tombstone.
+ tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
+ if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");err!=nil{return err}
+ if _,err=tx.ExecContext(ctx,"DELETE FROM alert_events WHERE node=?",name);err!=nil{return err}
+ return tx.Commit()
 }
 func removeNode(ctx context.Context,db *sql.DB,name string)error{
  tx,err:=db.BeginTx(ctx,nil);if err!=nil{return err};defer tx.Rollback()
@@ -158,6 +162,8 @@ func removeNode(ctx context.Context,db *sql.DB,name string)error{
  if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_daily WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM traffic_quarter WHERE name=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"DELETE FROM node_limits WHERE name=?",name);err!=nil{return err}
+ // A deleted node must never leave active or recovered alarms behind.
+ if _,err=tx.ExecContext(ctx,"DELETE FROM alert_events WHERE node=?",name);err!=nil{return err}
  if _,err=tx.ExecContext(ctx,"INSERT INTO agent_tokens(name,hash) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET hash=excluded.hash",name,"REVOKED");err!=nil{return err}
  return tx.Commit()
 }
