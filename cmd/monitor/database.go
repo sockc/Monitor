@@ -51,6 +51,9 @@ func openDB(path string)(*sql.DB,error){
  for _,q:=range []string{
  "PRAGMA journal_mode=WAL",
  "PRAGMA busy_timeout=5000",
+ // Connection-local auto checkpoint; journal_size_limit applies after successful checkpoints.
+ "PRAGMA wal_autocheckpoint=256",
+ "PRAGMA journal_size_limit=67108864",
  "CREATE TABLE IF NOT EXISTS samples(name TEXT NOT NULL,ts INTEGER NOT NULL,cpu REAL NOT NULL,memory REAL NOT NULL,disk REAL NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(name,ts))",
  "CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts)",
  "CREATE TABLE IF NOT EXISTS traffic_daily(name TEXT NOT NULL, day TEXT NOT NULL, rx INTEGER NOT NULL DEFAULT 0, tx INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(name,day))",
