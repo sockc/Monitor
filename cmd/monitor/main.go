@@ -3,6 +3,7 @@ package main
 import (
  "context"
  "crypto/subtle"
+ "errors"
  
  "encoding/json"
  "database/sql"
@@ -15,11 +16,13 @@ import (
  "net"
  "net/http"
  "os"
+ "os/signal"
  "path/filepath"
  "runtime"
  "strconv"
  "strings"
  "sync"
+ "syscall"
  "time"
 )
 
@@ -33,7 +36,7 @@ func validIPFamily(raw string,family int)bool{
  return false
 }
 
-const monitorVersion="v0.9.18.1"
+const monitorVersion="v0.9.18.2"
 type Sample struct {
  Name string `json:"name"`
  Hostname string `json:"hostname"`
@@ -338,11 +341,29 @@ func main(){
   w.Header().Set("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
   dashboard.Execute(w,nil)
  })
+ ctx,stop:=signal.NotifyContext(context.Background(),os.Interrupt,syscall.SIGTERM)
+ defer stop()
  go startAlertLoop(s)
- go func(){t:=time.NewTicker(30*time.Second);defer t.Stop();for range t.C{if e:=s.save();e!=nil{log.Printf("save: %v",e)};if _,e:=s.db.Exec("DELETE FROM samples WHERE ts < ?",time.Now().Add(-30*24*time.Hour).Unix());e!=nil{log.Printf("retention: %v",e)}}}()
+ // Keep the legacy snapshot interval without rerunning retention every 30s.
+ go func(){t:=time.NewTicker(30*time.Second);defer t.Stop();for {
+  select {case <-ctx.Done():return;case <-t.C:if e:=s.save();e!=nil{log.Printf("save: %v",e)}}
+ }}()
+ go runDatabaseMaintenance(ctx,s.db,*dbpath)
  log.Printf("Monitor %s server listening on %s (%s)",runtime.Version(),*listen,*file)
  srv:=&http.Server{Addr:*listen,Handler:mux,ReadHeaderTimeout:5*time.Second,ReadTimeout:10*time.Second,WriteTimeout:15*time.Second,IdleTimeout:60*time.Second}
- log.Fatal(srv.ListenAndServe())
+ shutdownDone:=make(chan struct{})
+ go func(){
+  <-ctx.Done()
+  shutdownCtx,cancel:=context.WithTimeout(context.Background(),20*time.Second)
+  defer cancel()
+  if err:=srv.Shutdown(shutdownCtx);err!=nil{log.Printf("http shutdown: %v",err)}
+  close(shutdownDone)
+ }()
+ serveErr:=srv.ListenAndServe()
+ if serveErr!=nil&&!errors.Is(serveErr,http.ErrServerClosed){log.Printf("server: %v",serveErr)}
+ stop()
+ <-shutdownDone
+ if serveErr!=nil&&!errors.Is(serveErr,http.ErrServerClosed){os.Exit(1)}
 }
 var dashboard=template.Must(template.New("dash").Parse(dashboardHTML))
 var _=fmt.Sprintf
