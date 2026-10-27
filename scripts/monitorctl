@@ -5,7 +5,7 @@ set -euo pipefail
 
 SELF="/usr/local/bin/monitorctl"
 RAW="https://raw.githubusercontent.com/sockc/Monitor/main/scripts"
-VERSION="${MONITOR_VERSION:-v0.9.18.1}"
+VERSION="${MONITOR_VERSION:-v0.9.18.2}"
 
 note(){ printf '%s\n' "$*"; }
 fail(){ printf '错误：%s\n' "$*" >&2;exit 1; }
@@ -133,6 +133,13 @@ backup_server(){
  rm -rf "$tmp"
  return "$rc"
 }
+maintain_server_db(){
+ need_root "db-maintain"
+ installed server || fail "未检测到 Monitor Server"
+ note "先执行 SQLite 在线备份；成功后短暂停止 Server 并执行检查点。"
+ backup_server || fail "数据库备份失败，未执行维护"
+ MONITOR_BACKUP_CONFIRMED=1 with_scripts maintain-db.sh
+}
 uninstall_role(){
  local role="$1"
  need_root "uninstall $role"
@@ -172,6 +179,7 @@ Monitor 管理器
   monitorctl status [server|agent]  查看服务状态
   sudo monitorctl logs server|agent 查看最近日志
   sudo monitorctl backup            备份数据库
+  sudo monitorctl db-maintain       备份后停服执行 WAL 检查点
   sudo monitorctl uninstall server|agent  卸载服务（保留数据）
   sudo monitorctl self-update       更新管理器本身
   monitorctl version                显示管理器默认版本
@@ -187,7 +195,7 @@ menu(){
   printf '3. 升级 Server       4. 升级 Agent\n'
   printf '5. 查看状态          6. 查看日志\n'
   printf '7. 备份 Server       8. 卸载服务\n'
-  printf '9. 更新管理器        0. 退出\n'
+  printf '9. 更新管理器        10. 数据库维护        0. 退出\n'
   local pick role
   read -r -p "请选择：" pick || break
   case "$pick" in
@@ -198,6 +206,7 @@ menu(){
    5) status_role;;
    6) read -r -p "查看哪个服务日志？[server/agent]：" role;bash "$0" logs "$role" || note "读取日志失败";;
    7) bash "$0" backup || note "备份失败";;
+   10) bash "$0" db-maintain || note "维护失败，请查看上方日志";;
    8) read -r -p "卸载哪个服务？[server/agent]：" role;bash "$0" uninstall "$role" || note "卸载未完成";;
    9) bash "$0" self-update || note "更新管理器失败";;
    0) break;;
@@ -214,6 +223,7 @@ main(){
   status) [[ -z "$role" ]] || valid_role "$role";status_role "$role";;
   logs) valid_role "$role";logs_role "$role";;
   backup) backup_server;;
+  db-maintain) maintain_server_db;;
   uninstall) valid_role "$role";uninstall_role "$role";;
   self-update) update_self;;
   version) note "Monitor 默认版本：$VERSION";;
