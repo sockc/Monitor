@@ -49,3 +49,13 @@ Agent 手动运行 `monitorctl install agent` 时仍可按生成的安装命令�
 若同一机器同时运行 Server 和 Agent，升级时优先备份 Server 并同步重启 Agent。
 升级前建议检查 [Releases](https://github.com/sockc/Monitor/releases)。
 
+
+## 数据库维护（V0.9.18.2）
+
+Server 继续使用 SQLite WAL。连接开启自动检查点（256 页），成功检查点后的 WAL 保留大小限制为 64 MiB（不是硬上限）。
+后台每 10 分钟检查 WAL；超过 256 MiB 时尝试带 30 秒超时的 TRUNCATE 检查点并记录成功/失败，失败会保留数据库文件。
+30 天样本清理由每 30 秒改为启动时和每 24 小时一次；流量汇总、配置、告警以及 UI 保持原样。
+收到 SIGTERM 后 Server 会优雅关闭 HTTP 请求与 SQLite。
+
+**不要手动删除 SQLite 的 -wal 或 -shm 文件。** 先保证磁盘有空间并进行可信备份。
+升级管理器后可运行 `sudo monitorctl db-maintain`，它会执行经过 quick_check 的 SQLite 在线备份，短暂停止 Server，确认没有其他进程占用数据库后通过原生 `PRAGMA wal_checkpoint(TRUNCATE)` 截断 WAL，最后尝试重新启动服务。

@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-bash -n scripts/monitorctl scripts/install-release.sh scripts/upgrade.sh scripts/backup.sh scripts/rebind-agent.sh
+bash -n scripts/monitorctl scripts/install-release.sh scripts/upgrade.sh scripts/backup.sh scripts/maintain-db.sh scripts/rebind-agent.sh
 help_output="$(bash scripts/monitorctl --help)"
 [[ "$help_output" == *"install server"* ]]
 [[ "$help_output" == *"install agent"* ]]

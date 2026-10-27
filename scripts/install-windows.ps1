@@ -6,7 +6,7 @@ param(
  [string]$Server='',
  [string]$NodeName='',
  [string]$Token='',
- [string]$Version='v0.9.18.1'
+ [string]$Version='v0.9.18.2'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
